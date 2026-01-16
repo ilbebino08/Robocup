@@ -25,6 +25,7 @@ float integral_error = 0.0;
 float last_line_position = 0.0;
 unsigned long last_time = 0;
 
+
 short pidLineFollowing(short base_vel) {
     // Leggi la posizione della linea dal sensorBoard
     int16_t line_position = IR_board.line();
@@ -63,10 +64,23 @@ short pidLineFollowing(short base_vel) {
     
     // Converti l'output PID a angolo di sterzata (range: -1750 a 1750)
     short steering_angle = (short)pid_output;
-    
+
+    // ===== CALCOLO VELOCITÀ SCALATA =====
+    // Riduci la velocità in base alla distanza dal centro (errore)
+    // Più l'errore è grande, più la velocità si riduce (minimo 30% della base)
+    float error_abs = abs(error);
+    float max_error = MAX_STEERING; // errore massimo considerato
+    float scale = 1.0 - (error_abs / max_error) * 0.7; // da 1.0 a 0.3
+    if (scale < 0.3) scale = 0.3;
+    short scaled_vel = (short)(base_vel * scale);
+
+    // Mantieni il segno di base_vel
+    if (base_vel < 0) scaled_vel = -abs(scaled_vel);
+    else scaled_vel = abs(scaled_vel);
+
     // ===== APPLICA MOVIMENTO =====
-    // Muovi il robot con velocità base e angolo calcolato dal PID
-    motori.muovi(base_vel, steering_angle);
+    // Muovi il robot con velocità scalata e angolo calcolato dal PID
+    motori.muovi(scaled_vel, steering_angle);
     
     // ===== AGGIORNA VARIABILI PER PROSSIMA ITERAZIONE =====
     last_line_position = error;
