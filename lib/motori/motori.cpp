@@ -9,7 +9,7 @@ void Motori::init(){
     mot_dx.attach(MDX_PIN);
     mot_po.attach(MPO_PIN);
 
-    // Delay per permitere ai servo di inizializzarsi correttamente
+    // Delay per permittere ai servo di inizializzarsi correttamente
     delay(50);
 
     mot_sx.writeMicroseconds(msx_vel);
@@ -70,12 +70,23 @@ void Motori::muovi(short vel, short ang){
     
     msx_vel = vel_sx;
     mdx_vel = vel_dx;
-    
-    // Il motore posteriore deve muoversi in base alla velocità, non ai motori frontali
-    if(vel >= 0){
-        mpo_vel = map(vel, 0, 1023, MPO_ZEROMIN, MPO_MAX);
+
+    // Calcola la velocità media dei motori anteriori in scala [-1023, 1023]
+    int vel_sx_norm, vel_dx_norm;
+    if (vel >= 0) {
+        vel_sx_norm = map(vel_sx, MSX_ZEROMIN, MSX_MAX, 0, 1023);
+        vel_dx_norm = map(vel_dx, MDX_ZEROMIN, MDX_MAX, 0, 1023);
     } else {
-        mpo_vel = map(-vel, 0, 1023, MPO_ZEROMAX, MPO_MIN);
+        vel_sx_norm = -map(vel_sx, MSX_ZEROMAX, MSX_MIN, 0, 1023);
+        vel_dx_norm = -map(vel_dx, MDX_ZEROMAX, MDX_MIN, 0, 1023);
+    }
+    int vel_media = (vel_sx_norm + vel_dx_norm) / 2;
+
+    // Il motore posteriore segue la media delle anteriori
+    if (vel_media >= 0) {
+        mpo_vel = map(vel_media, 0, 1023, MPO_ZEROMIN, MPO_MAX);
+    } else {
+        mpo_vel = map(-vel_media, 0, 1023, MPO_ZEROMAX, MPO_MIN);
     }
 
     if(MPO_INV){

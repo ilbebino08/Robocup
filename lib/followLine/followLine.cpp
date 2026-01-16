@@ -72,13 +72,14 @@ short pidLineFollowing(short base_vel) {
     float max_error = MAX_STEERING; // errore massimo considerato
     float scale = 1.0 - (error_abs / max_error) * 0.7; // da 1.0 a 0.3
     if (scale < 0.3) scale = 0.3;
-    short scaled_vel = (short)(base_vel * scale);
+    short scaled_vel = (short)(abs(base_vel) * scale);
 
     // Mantieni il segno di base_vel
-    if (base_vel < 0) scaled_vel = -abs(scaled_vel);
-    else scaled_vel = abs(scaled_vel);
+    if (base_vel < 0) scaled_vel = -scaled_vel;
 
-    // ===== APPLICA MOVIMENTO =====
+    // Inverti la sterzata se vai in retromarcia
+    if (base_vel < 0) steering_angle = -steering_angle;
+
     // Muovi il robot con velocità scalata e angolo calcolato dal PID
     motori.muovi(scaled_vel, steering_angle);
     

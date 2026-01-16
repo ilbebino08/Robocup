@@ -1,3 +1,13 @@
+/**
+ * @file Funzioni.h
+ * @brief Funzioni di utilità per la gestione degli eventi del pulsante e per la lettura dello stato della linea tramite i sensori.
+ * 
+ * - Gestione callback per singolo, doppio e triplo click del pulsante.
+ * - Funzione di stato per la linea (linea, nessuna linea, colore rilevato, verde SX/DX, doppio verde).
+ * 
+ * Queste funzioni vengono richiamate nel main loop per gestire le azioni principali del robot in base agli input utente e ai sensori.
+ */
+
 #include <Arduino.h>
 #include <motori.h>
 #include <followLine.h>
@@ -39,7 +49,11 @@ void triploClick() {
     resetPID();
 }
 
-
+/**
+ * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
+ * 
+ * @return int -> Stato della linea (LINEA, NO_LINEA, COL_RILEVATO, VERDE_SX, VERDE_DX, DOPPIO_VERDE).
+ */
 int statoLinea(){
     if(IR_board.checkColor())                               return COL_RILEVATO;
     if(IR_board.checkGreenDx() and IR_board.checkGreenSx()) return DOPPIO_VERDE;

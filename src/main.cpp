@@ -44,7 +44,7 @@ void setup() {
 
 void loop() {
     button.update();
-    /*
+    
     if(!button.isPaused()) {
         switch (statoLinea())
         {
@@ -84,27 +84,7 @@ void loop() {
         default:
             break;
         }
-        */
-
-    if(!button.isPaused()) {
-        Serial.println(pidLineFollowing(DEFAULT_VELOCITY));
-        /*
-        if(!IR_board.checkLinea()){
-            motori.muovi(-400, 0);
-            lastNoLineaTime = millis();
-            if(millis() - lastNoLineaTime > 1000){
-                motori.stop();
-                button.setPaused(true);
-            } else {
-                motori.muovi(-400, 0);
-                timer = millis();
-                while (millis() - timer < 1000){
-                    button.update();
-                    IR_board.utils.val_sensor();
-                }
-            }
-        }
-*/
+        
     }
 }
 
