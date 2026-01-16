@@ -1,0 +1,960 @@
+#include <Arduino.h>
+//  SENSORE LASER TOF
+
+#include <Adafruit_VL53L0X.h>
+
+#include <Wire.h>
+
+//**********INCLUSIONE LIBRERIE************
+
+#include <sensorBoard.h>
+
+#include <Adafruit_AS7341.h>
+
+Adafruit_AS7341 as7341;
+
+#include <Servo.h>
+
+Servo s1;
+Servo s2;
+
+#include "robot.h"
+
+#define LOX1_ADDRESS 0x30
+#define LOX2_ADDRESS 0x31
+#define LOX3_ADDRESS 0x32
+#define LOX4_ADDRESS 0x33
+#define LOX5_ADDRESS 0x34
+#define LOX6_ADDRESS 0x35
+
+// set the pins to shutdown
+#define SHT_LOX1 3 // F_dx
+#define SHT_LOX2 5 // R_dx - 15
+
+#define SHT_LOX3 52 // F_sx
+#define SHT_LOX4 50 // R_sx
+
+#define SHT_LOX5 49 // TOF frontale ostacolo
+
+#define SHT_LOX6 48 // TOF PALLINA
+
+// objects for the vl53l0x
+Adafruit_VL53L0X lox1 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox2 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox3 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox4 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox5 = Adafruit_VL53L0X();
+Adafruit_VL53L0X lox6 = Adafruit_VL53L0X();
+
+// this holds the measurement
+VL53L0X_RangingMeasurementData_t measure1;
+VL53L0X_RangingMeasurementData_t measure2;
+VL53L0X_RangingMeasurementData_t measure3;
+VL53L0X_RangingMeasurementData_t measure4;
+VL53L0X_RangingMeasurementData_t measure5;
+VL53L0X_RangingMeasurementData_t measure6;
+
+BottomSensor IR_board;
+int mem = 0;
+unsigned long prev_inv;
+
+//****************************************
+
+void setup()
+{
+    int i, ang0;
+    float d;
+
+    Serial.begin(115200);
+    Serial1.begin(57600);
+
+    /* INIZIALIZZAZIONE SPECTRAL LATERALE */
+
+    if (!as7341.begin())
+    {
+        Serial.println("Could not find AS7341");
+        while (1)
+        {
+            digitalWrite(LED_R, HIGH);
+            delay(100);
+            digitalWrite(LED_R, LOW);
+            delay(100);
+        }
+    }
+
+    as7341.setATIME(100);
+    as7341.setASTEP(999);
+    as7341.setGain(AS7341_GAIN_256X);
+    as7341.setLEDCurrent(100); // led 100mA
+    as7341.enableLED(false);   // spengi LED
+
+    // SERVOMOTORI BRACCIO
+
+    s1.attach(28); // apri e chiudi
+    s2.attach(39); // su e giù
+
+    s1.write(5);
+    s2.write(38); /* 38 su, 170 giù*/
+
+    // SENSORI LASER PINOUT ***
+
+    pinMode(SHT_LOX1, OUTPUT);
+    pinMode(SHT_LOX2, OUTPUT);
+    pinMode(SHT_LOX3, OUTPUT);
+    pinMode(SHT_LOX4, OUTPUT);
+    pinMode(SHT_LOX5, OUTPUT);
+    pinMode(SHT_LOX6, OUTPUT);
+
+    digitalWrite(SHT_LOX1, LOW);
+    digitalWrite(SHT_LOX2, LOW);
+    digitalWrite(SHT_LOX3, LOW);
+    digitalWrite(SHT_LOX4, LOW);
+    digitalWrite(SHT_LOX5, LOW);
+    digitalWrite(SHT_LOX6, LOW);
+
+    setID(); // assegna nuovi indirizzi sensori TOF
+    Serial.println("SET ID fatto");
+
+    //*************************
+
+    pinMode(ST_PULS, INPUT_PULLUP);
+    pinMode(LED_R, OUTPUT);
+    pinMode(LED_G, OUTPUT);
+    pinMode(LED_V, OUTPUT);
+
+    pinMode(s_prox, INPUT);
+
+    // SWITCH
+
+    pinMode(sw1, INPUT_PULLUP);
+    pinMode(sw2, INPUT_PULLUP);
+    pinMode(sens_condt, INPUT_PULLUP);
+
+    /*************************/
+
+    /*pinMode(trig_dx_f, OUTPUT);
+    pinMode(trig_dx_r, OUTPUT);
+    pinMode(trig_sx_f, OUTPUT);
+    pinMode(trig_sx_r, OUTPUT);
+
+    pinMode(echo_sx_f, INPUT);
+    pinMode(echo_dx_f, INPUT);
+    pinMode(echo_dx_r, INPUT);
+    pinMode(echo_sx_r, INPUT);
+
+    pinMode(trig1, OUTPUT);           // ULTRASUONI FRONTALI
+    pinMode(trig2, OUTPUT);
+    pinMode(echo1, INPUT);
+    pinMode(echo2, INPUT);*/
+
+    mot_sx.attach(SERVO_SXF);
+    mot_dx.attach(SERVO_DXF);
+    mot_post.attach(SERVO_POST);
+
+    IR_board.setCheckColor(1);
+    stato = STBY;
+}
+
+void loop()
+{
+    float sx, dx;
+    int res, ok, i;
+
+    switch (stato)
+    {
+
+    case STBY:
+
+    attendi:
+        if (digitalRead(ST_PULS) == LOW)
+        {
+            t_prec = millis();
+            delay(50);
+        }
+        else
+        {
+            goto attendi;
+        }
+        while (digitalRead(ST_PULS) == LOW)
+        {
+            if (millis() - t_prec > 1000)
+            {
+                stato = CALIBRA;
+                digitalWrite(LED_R, HIGH);
+                digitalWrite(LED_V, HIGH);
+                digitalWrite(LED_G, HIGH);
+                delay(1000);
+            }
+        }
+        if (millis() - t_prec <= 1000)
+        {
+            stato = ATTESA;
+            digitalWrite(LED_R, LOW);
+            digitalWrite(LED_V, LOW);
+            digitalWrite(LED_G, LOW);
+        }
+        break;
+
+    case CALIBRA:
+
+        // CALIBRAZIONE LINEA NERA
+
+        digitalWrite(LED_R, LOW); // calibra solo se il pulsante viene premuto per più di 1s
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_G, LOW);
+
+        if (IR_board.utils.calibration())
+        {
+            digitalWrite(LED_V, HIGH);
+            delay(2000);
+            digitalWrite(LED_V, LOW);
+            // stato = ATTESA;
+        }
+        else
+        {
+            digitalWrite(LED_R, HIGH);
+            while (1)
+                ;
+        }
+
+        // CALIBRAZIONE VERDI
+
+        /*digitalWrite(LED_R, LOW);           // calibra solo se il pulsante viene premuto per più di 1s
+        digitalWrite(LED_V, HIGH);
+        digitalWrite(LED_G, LOW);
+
+        delay(1000);
+
+        while(digitalRead(ST_PULS));
+
+        delay(1000);
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_R, HIGH);
+        delay(200);
+        IR_board.utils.greenSxCalibration();
+        delay(200);
+        digitalWrite(LED_R, LOW);
+        digitalWrite(LED_V, HIGH);
+
+        while(digitalRead(ST_PULS));
+
+        delay(1000);
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_G, HIGH);
+        delay(200);
+        IR_board.utils.greenDxCalibration();
+        delay(200);
+        digitalWrite(LED_G, LOW);
+
+        delay(2500);*/
+        stato = ATTESA;
+
+        break;
+
+    case ATTESA:
+        entry_room = 0; // memorizza stanza non ancora eseguita
+        room_complet = 0;
+        mem_start = 0;                     // ricorda di eseguire la partenza
+                                           // eventuale spostamento da lineposition == 0
+        mot_sx.writeMicroseconds(ZERO_SX); // stop robot
+        mot_dx.writeMicroseconds(ZERO_DX);
+        mot_post.writeMicroseconds(ZERO_B);
+        delay(500); // ritardo rilascio pulsante
+
+        while (digitalRead(ST_PULS))
+        {
+            digitalWrite(LED_R, HIGH);
+            delay(100);
+            digitalWrite(LED_R, LOW);
+            delay(100);
+            digitalWrite(LED_V, HIGH);
+            delay(100);
+            digitalWrite(LED_V, LOW);
+            delay(100);
+            digitalWrite(LED_G, HIGH);
+            delay(100);
+            digitalWrite(LED_G, LOW);
+            delay(100);
+            /*read_tof_sensors();
+            Serial.println(dist_read[3]);*/
+        }
+        delay(1500);
+
+        if (first_start == 0) // se prima partenza
+        {
+            t_race_max = millis(); // memorizza valore millis attuale
+            first_start = 1;       // ricorda memoria tempo avvenuta
+        }
+
+        attachInterrupt(digitalPinToInterrupt(2), int_pulse, FALLING); // Abilita interrupt pulsante pin 2
+        stato = START;
+        break;
+
+    case START:
+
+        // se completato stanza e eseguito prima volta, dopo 4s
+
+        if (room_complet == 1 && exit_green == 1 && (millis() - t_room_complet >= 4000))
+        {
+            exit_green = 0; // riabilitazione verdi dopo scadenza timer e completamento stanza
+        }
+
+        line_position = IR_board.line(); // leggi valore corrente linea
+
+        if (((IR_board.checkGreenSx() || IR_board.checkGreenDx()) && (line_position != 0) && (millis() - t_green > 2000)) && exit_green == 0)
+        {
+            stato = INCROCIO;
+        }
+
+        /* GESTIONE SALITA - Spostamento braccio per bilanciamento*/
+
+        if (count_axis == 21) // se giunto al ventunesimo ciclo
+        {
+            count_axis = 0; // azzera conteggio cicli
+
+            if (accel.update()) // se aggiornamento assi terminato
+            {
+                if (accel.getX() > 0.20 && m_axis == 0) // se accel.getX > 20
+                {
+                    if (accel.getX() > 0.20 && timer_axis == 0) // controllo per evitare false letture
+                    {
+                        t_salita = millis();
+                        timer_axis = 1; // ricorda attivazione timer
+                    }
+
+                    if (accel.getX() > 0.20 && ((millis() - t_salita) > 1500) && m_axis == 0)
+                    {
+
+                        digitalWrite(LED_V, HIGH);
+                        digitalWrite(LED_R, HIGH); // accendi LED rosso e verde
+                        m_axis = 1;                // ricorda braccio avanti
+                        avanti(0, 0);
+
+                        for (int b = 175; b > 74; b--)
+                        {
+                            s2.write(b);
+                            delay(15);
+                        }
+                        avanti(35, 0);
+                        delay(80);
+                    }
+                }
+
+                else
+                    timer_axis = 0;
+
+                if (accel.getX() < 0.10 && m_axis == 1) // se accel.getX < 15 (trig)
+                {
+                    digitalWrite(LED_V, LOW);
+                    digitalWrite(LED_R, LOW); // spengi LED rosso e verde
+                    m_axis = 0;               // ricorda braccio abbassato
+                    avanti(0, 0);
+
+                    for (int b = 70; b < 176; b++)
+                    {
+                        s2.write(b);
+                        delay(20);
+                    }
+                    avanti(35, 0);
+                    delay(80);
+                }
+            }
+        }
+        else
+        {
+            count_axis++; // incrementa conteggio cicli
+        }
+
+        /* CONTROLLO OSTACOLO */
+
+        if (count_front == 15) // se giunto al quindicesimo ciclo
+        {
+            count_front = 0;                        // azzera conteggio cicli
+            read_tof_front();                       // leggi sensore tof frontale
+            if ((dist_read[4] < 85) && m_axis == 0) // se ostacolo a meno di 70 mm
+            {
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                stato = OBSTACLE; // imposta stato come ostacolo
+            }
+        }
+        else
+        {
+            count_front++; // incrementa conteggio cicli
+        }
+
+        /* SE LINEA TRASVERSALE NERA */
+
+        if (line_position == 0)
+        {
+
+            mem = 1; // memoria per evitare controllo interruzione linea con trasversale nera
+            delay(5);
+            mot_sx.writeMicroseconds(ZERO_SX); // stop motori per controllare presenza verde
+            mot_dx.writeMicroseconds(ZERO_DX);
+            mot_post.writeMicroseconds(ZERO_B);
+            delay(500);
+
+            line_position = IR_board.line(); // aggiornamento lettura linea
+
+            if ((IR_board.checkGreenSx() == HIGH) && (IR_board.checkGreenDx() == HIGH)) // presenza di doppio bollino verde
+            {
+                stato = INVERSIONE; // esegui inversione
+            }
+
+            else if ((IR_board.checkGreenSx() == LOW) && (IR_board.checkGreenDx() == HIGH)) // presenza bollino verde sx
+            {
+                stato = INCROCIO; // esegui incrocio
+            }
+
+            else if ((IR_board.checkGreenSx() == HIGH) && IR_board.checkGreenDx() == LOW) // presenza bollino verde dx
+            {
+                stato = INCROCIO; // esegui incrocio
+            }
+
+            else
+            {
+                mot_sx.writeMicroseconds(ZERO_SX + 200); // parti in avanti  50 ms per uscire da bordline = 0
+                mot_dx.writeMicroseconds(ZERO_DX - 200);
+                mot_post.writeMicroseconds(ZERO_B - 200);
+                delay(150);
+            }
+        }
+
+        /* CONTROLLO PER INTERRUZIONE LINEA O ROTATORIA */
+
+        // se rileva bianco (tutta la linea) stop e torna indietro
+        // per controllare se la linea è sempre nel range (allora si tratta di interruzione di linea)
+        // se la linea riporta valori diversi dal range allora è un fuori tratettoria in rotatoria
+        // deve riposizionarsi e ritornare in segui linea senza svoltare
+
+        if ((line_position == -1750 || line_position == 1750) && (mem == 0)) // interruzione di linea
+        {
+            IR_board.setCheckColor(1);         // abilita eventuale colore argento
+            mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+            mot_dx.writeMicroseconds(ZERO_DX);
+            mot_post.writeMicroseconds(ZERO_B);
+            digitalWrite(LED_V, HIGH);
+            digitalWrite(LED_G, HIGH);
+            digitalWrite(LED_R, HIGH);
+
+            delay(300);
+
+            t_color = millis();
+            IR_board.setCheckColor(3);
+
+            while (millis() - t_color <= 500)
+            {
+                line_position = IR_board.line();
+                mot_sx.writeMicroseconds(ZERO_SX + 200); // avanti motori
+                mot_dx.writeMicroseconds(ZERO_DX - 200);
+                mot_post.writeMicroseconds(ZERO_B - 200);
+                if (IR_board.checkColor())
+                {
+                    // Serial.println("VISTO ROSSO");
+                    mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                    mot_dx.writeMicroseconds(ZERO_DX);
+                    mot_post.writeMicroseconds(ZERO_B);
+                    delay(500);
+                    stato = ATTESA;
+                    goto end_int_line;
+                }
+            }
+
+            t_color = millis();
+
+            while (millis() - t_color <= 500)
+            {
+                line_position = IR_board.line();
+                mot_sx.writeMicroseconds(ZERO_SX - 200); // dietro motori
+                mot_dx.writeMicroseconds(ZERO_DX + 200);
+                mot_post.writeMicroseconds(ZERO_B + 200);
+                if (IR_board.checkColor())
+                {
+                    // Serial.println("VISTO ROSSO");
+                    mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                    mot_dx.writeMicroseconds(ZERO_DX);
+                    mot_post.writeMicroseconds(ZERO_B);
+                    delay(500);
+                    stato = ATTESA;
+                    goto end_int_line;
+                }
+            }
+
+            /*if(rosso_mem == 1)
+            {
+              digitalWrite(LED_R, HIGH);
+              while(1);
+            }*/
+
+            mot_sx.writeMicroseconds(ZERO_SX - 200); // torna indietro per controllare linea
+            mot_dx.writeMicroseconds(ZERO_DX + 200);
+            mot_post.writeMicroseconds(ZERO_B + 200);
+
+            line_position = IR_board.line(); // leggi linea
+
+            while (line_position == -1750 || line_position == 1750) // ripeti fino a quando non trovi la linea
+            {
+                line_position = IR_board.line(); // leggi linea
+            }
+
+            delay(700); // continua indietro per altri 700 ms
+
+            mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+            mot_dx.writeMicroseconds(ZERO_DX);
+            mot_post.writeMicroseconds(ZERO_B);
+
+            delay(200);
+
+            IR_board.line(); // leggi linea
+
+            if (IR_board.checkLinea()) // se frontale vede linea, si tratta di un'interruzione
+
+            {
+                line_position = IR_board.line();
+
+                if (line_position <= -(limit + 60)) // se fuori limite a sinistra ruota leggermente a sinistra
+                {
+                    velsx = ZERO_SX + 200;
+
+                    veldx = ZERO_DX + 200;
+
+                    velb = ZERO_B + 100;
+
+                    mot_sx.writeMicroseconds(velsx);
+                    mot_dx.writeMicroseconds(veldx);
+                    mot_post.writeMicroseconds(velb);
+                    delay(200);
+                    mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                    mot_dx.writeMicroseconds(ZERO_DX);
+                    mot_post.writeMicroseconds(ZERO_B);
+                }
+
+                if (line_position >= (limit + 60)) // se fuori limite a destra ruota leggermente a destra - 40
+                {
+                    velsx = ZERO_SX - 200;
+
+                    veldx = ZERO_DX - 200;
+
+                    velb = ZERO_B + 100;
+
+                    mot_sx.writeMicroseconds(velsx);
+                    mot_dx.writeMicroseconds(veldx);
+                    mot_post.writeMicroseconds(velb);
+                    delay(200);
+                    mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                    mot_dx.writeMicroseconds(ZERO_DX);
+                    mot_post.writeMicroseconds(ZERO_B);
+                }
+
+                mot_sx.writeMicroseconds(ZERO_SX + 200); // riparti in avanti per interruzione linea
+                mot_dx.writeMicroseconds(ZERO_DX - 200); // velocità ridotta a 200
+                mot_post.writeMicroseconds(ZERO_B - 200);
+
+                delay(1500); // ritardo per uscire dalla linea - 1500
+
+                IR_board.setCheckColor(1);
+                line_position = IR_board.line();
+
+                // RIPETI FINO A QUANDO E' BIANCO
+
+                while ((line_position == -1750 || line_position == 1750) && stato == START) // ripeti fino a quando ritrova la linea
+                {
+                    line_position = IR_board.line(); // leggi linea
+
+                    // CONTROLLO LINEA TRASVERSALE GRIGIA *****************************************************************
+
+                    if ((IR_board.checkColor() == HIGH) && stato == START && room_complet == 0) // se durante interruzione rileva trasversale grigia
+                    {
+                        mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                        mot_dx.writeMicroseconds(ZERO_DX);
+                        mot_post.writeMicroseconds(ZERO_B);
+                        digitalWrite(LED_V, LOW);
+                        digitalWrite(LED_G, LOW);
+                        digitalWrite(LED_R, LOW);
+
+                        delay(200);
+                        digitalWrite(LED_V, HIGH);
+                        delay(200);
+                        stato = ROOM; // ricorda cambio di stato
+                    }
+
+                    // ****************************************************************************************
+                }
+
+                delay(300); // ritardo per consentire al robot di salire sulla linea - 200
+            }
+
+            else // ALTRIMENTI E' USCITO IN ROTATORIA
+
+            {
+                if (prev_green_dx == true && prev_green_sx == false) // se al verde prec. ha svoltato a destra
+                                                                     //(la rotatoria gira antiorario)
+                {
+                    mot_sx.writeMicroseconds(ZERO_SX - 200); // ruota a sinistra per rientrare in linea
+                    mot_dx.writeMicroseconds(ZERO_DX - 200); // velocità ridotta a 200
+                    mot_post.writeMicroseconds(ZERO_B - 100);
+
+                    delay(1500);
+                }
+
+                else // se invece al verde prec. ha svoltato a sinistra
+                     // (la rotatoria è in senso orario)
+                {
+                    mot_sx.writeMicroseconds(ZERO_SX + 200); // ruota a destra per rientrare in linea
+                    mot_dx.writeMicroseconds(ZERO_DX + 200); // velocità ridotta a 200
+                    mot_post.writeMicroseconds(ZERO_B - 100);
+
+                    delay(1500);
+                }
+            }
+
+        end_int_line:
+            stato_mem = 0; // ricorda fine interruzione di linea e riabilita colore rosso
+        }
+
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_G, LOW);
+        digitalWrite(LED_R, LOW);
+
+        mem = 0;
+        if (stato == START)
+        {
+            segui_riga(); // Se nessuno dei casi precedenti esegui segui riga
+        }
+
+        break;
+
+    case INCROCIO:
+        if (IR_board.checkGreenSx())
+        {
+
+            prev_green_sx = true;      // ricorda visto verde sinistra
+            prev_green_dx = false;     // non visto verde a destra
+            digitalWrite(LED_R, HIGH); // accendi led rosso
+
+            mot_sx.writeMicroseconds(ZERO_SX - 200); // gira sinistra a tempo per uscire da linea frontale
+            mot_dx.writeMicroseconds(ZERO_DX - 200);
+            mot_post.writeMicroseconds(ZERO_B);
+            delay(600);
+
+            do
+            {
+                mot_sx.writeMicroseconds(ZERO_SX - 200); // gira sinistra fino a quando trovi linea
+                mot_dx.writeMicroseconds(ZERO_DX - 200);
+                mot_post.writeMicroseconds(ZERO_B);
+
+                if (stato == ATTESA)
+                {                                      // se eseguita interrupt pulsante termina ciclo case
+                    mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                    mot_dx.writeMicroseconds(ZERO_DX);
+                    mot_post.writeMicroseconds(ZERO_B);
+                    goto fine_gira; // salta a fine per terminare ciclo case attuale
+                }
+
+                IR_board.line(); // lettura valori linea
+            } while (!IR_board.checkLinea()); // ripeti ciclo fino a quando frontale vede linea
+
+            mot_sx.writeMicroseconds(ZERO_SX + 200); // robot avanti a tempo per uscire da bollino verde
+            mot_dx.writeMicroseconds(ZERO_DX - 200);
+            mot_post.writeMicroseconds(ZERO_B - 200);
+            delay(600);
+            while (IR_board.checkGreenSx()) // mentre vedi verde procedi avanti
+            {
+                IR_board.line();
+                mot_sx.writeMicroseconds(ZERO_SX + 200);
+                mot_dx.writeMicroseconds(ZERO_DX - 200);
+                mot_post.writeMicroseconds(ZERO_B - 200);
+            }
+            stato = START;
+            digitalWrite(LED_R, LOW);
+        }
+
+        if (IR_board.checkGreenDx())
+        {
+            prev_green_sx = false;     // non visto verde sinistra
+            prev_green_dx = true;      // ricorda visto verde a destra
+            digitalWrite(LED_G, HIGH); // led giallo acceso
+
+            mot_sx.writeMicroseconds(ZERO_SX + 200); // gira destra a tempo per uscire da linea frontale
+            mot_dx.writeMicroseconds(ZERO_DX + 200);
+            mot_post.writeMicroseconds(ZERO_B);
+            delay(600);
+
+            do
+            {
+                mot_sx.writeMicroseconds(ZERO_SX + 200); // gira destra fino a quando frontale vede linea
+                mot_dx.writeMicroseconds(ZERO_DX + 200);
+                mot_post.writeMicroseconds(ZERO_B);
+                if (stato == ATTESA)
+                {                                      // se eseguita interrupt pulsante termina ciclo case
+                    mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                    mot_dx.writeMicroseconds(ZERO_DX);
+                    mot_post.writeMicroseconds(ZERO_B);
+                    goto fine_gira; // salta a fine per terminare ciclo case attuale
+                }
+
+                IR_board.line(); // lettura valori linea
+            } while (!IR_board.checkLinea()); // ripeti ciclo fino a quando frontale vede linea
+
+            mot_sx.writeMicroseconds(ZERO_SX + 200); // robot avanti per uscire da bollino verde
+            mot_dx.writeMicroseconds(ZERO_DX - 200);
+            mot_post.writeMicroseconds(ZERO_B - 200);
+            delay(600);
+            while (IR_board.checkGreenDx()) // mentre vedi verde procedi avanti
+            {
+                IR_board.line();
+                mot_sx.writeMicroseconds(ZERO_SX + 200);
+                mot_dx.writeMicroseconds(ZERO_DX - 200);
+                mot_post.writeMicroseconds(ZERO_B - 200);
+            }
+            stato = START;
+            digitalWrite(LED_G, LOW);
+        }
+
+    fine_gira:
+        t_green = millis();
+
+        break;
+
+    case INVERSIONE:
+
+        digitalWrite(LED_G, HIGH);
+        digitalWrite(LED_R, HIGH);
+
+        mot_sx.writeMicroseconds(ZERO_SX + 200); // inversione
+        mot_dx.writeMicroseconds(ZERO_DX + 200);
+        mot_post.writeMicroseconds(ZERO_B);
+        prev_inv = millis();                 // memorizza tempo millis
+        while ((millis() - prev_inv) < 3200) // ciclo se tempo inferiore a 3,2 secondi
+        {
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_inv; // salta a fine per terminare ciclo case attuale
+            }
+        }
+
+        do
+        {
+            IR_board.line(); // leggi valori linea
+
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_inv; // salta a fine per terminare ciclo case attuale
+            }
+        } while (!IR_board.checkLinea()); // ripeti fino a quando ritrovi linea frontale
+
+        while (IR_board.checkGreenDx() || IR_board.checkGreenSx()) // se vedi ancora uno dei verdi
+        {
+            IR_board.line();
+            mot_sx.writeMicroseconds(ZERO_SX + 200); // vai avanti
+            mot_dx.writeMicroseconds(ZERO_DX - 200);
+            mot_post.writeMicroseconds(ZERO_B - 100);
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_inv; // salta a fine per terminare ciclo case attuale
+            }
+        }
+
+        stato = START;
+        digitalWrite(LED_G, LOW);
+        digitalWrite(LED_R, LOW);
+
+    fine_inv:
+        break;
+
+    case OBSTACLE:
+        delay(200); // ritardo motori fermi
+        mot_sx.writeMicroseconds(ZERO_SX - 100);
+        mot_dx.writeMicroseconds(ZERO_DX + 100); // retromarcia lenta
+        mot_post.writeMicroseconds(ZERO_B + 100);
+
+        do
+        {
+            read_tof_front();
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_obst; // salta a fine per terminare ciclo case attuale
+            }
+
+        } while (dist_read[4] < 85); // ripeti fino a quando dist < 70 mm
+
+        mot_sx.writeMicroseconds(ZERO_SX);
+        mot_dx.writeMicroseconds(ZERO_DX); // motori fermi
+        mot_post.writeMicroseconds(ZERO_B);
+        delay(200); // ritardo motori fermi
+
+        do
+        {
+
+            mot_sx.writeMicroseconds(ZERO_SX - 300);
+            mot_dx.writeMicroseconds(ZERO_DX - 300);
+            mot_post.writeMicroseconds(ZERO_B + 100);
+
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_obst; // salta a fine per terminare ciclo case attuale
+            }
+
+            read_tof_sensors(); // leggi sensoroi tof
+        } while (dist_read[0] > 70); // ripeti fino a quando trova l'ostacolo
+                                     // vicino al tof anteriore destro
+
+        mot_sx.writeMicroseconds(ZERO_SX); // motori fermi
+        mot_dx.writeMicroseconds(ZERO_DX);
+        mot_post.writeMicroseconds(ZERO_B);
+        delay(200);                              // breve ritardo
+        mot_sx.writeMicroseconds(ZERO_SX + 400); // avvia avanti
+        mot_dx.writeMicroseconds(ZERO_DX - 400);
+        mot_post.writeMicroseconds(ZERO_B - 400);
+
+        /*AGGIRAMENTO OSTACOLO */
+
+        unsigned long timer_obst = millis();
+
+        do
+        {
+            read_tof_sensors();
+
+            if (dist_read[0] < 50)
+                dist_read[0] = 50;
+            if (dist_read[0] > 80)
+                dist_read[0] = 80;
+
+            float st = map(dist_read[0], 50, 80, -25, 25); // 0.1 - 28
+            avanti(30, st);
+
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_obst; // salta a fine per terminare ciclo case attuale
+            }
+
+        } while (millis() - timer_obst < 4000); // 5000
+
+        do
+        {
+            read_tof_sensors();
+
+            if (dist_read[0] < 50)
+                dist_read[0] = 50;
+            if (dist_read[0] > 80)
+                dist_read[0] = 80;
+
+            float st = map(dist_read[0], 50, 80, -25, 25); // 0.1 - 28
+            avanti(30, st);
+
+            if (stato == ATTESA)
+            {                                      // se eseguita interrupt pulsante termina ciclo case
+                mot_sx.writeMicroseconds(ZERO_SX); // stop motori
+                mot_dx.writeMicroseconds(ZERO_DX);
+                mot_post.writeMicroseconds(ZERO_B);
+                goto fine_obst; // salta a fine per terminare ciclo case attuale
+            }
+
+            line_position = IR_board.line();
+
+        } while (line_position == -1750 || line_position == 1750);
+
+        /* IL ROBOT SI IMPEGNA A CERCARE LA LINEA */
+
+        mot_sx.writeMicroseconds(ZERO_SX); // stop robot
+        mot_dx.writeMicroseconds(ZERO_DX);
+        mot_post.writeMicroseconds(ZERO_B);
+        delay(100);
+        avanti(-20, 20);
+        delay(700); // ritardo per retromarcia
+        do
+        { // cerca la linea in rotazione
+            avanti(20, -10);
+            line_position = IR_board.line();
+        } while (line_position == 1750 || line_position == -1750);
+        delay(150);
+        avanti(20, -20);
+        delay(1200);
+        avanti(0, 0);
+        delay(200);
+
+        stato = START;
+
+    fine_obst:
+        break;
+    }
+
+    switch (stato)
+    {
+
+        /* Il robot è entrato nella stanza - gestione sezioni stanza */
+
+    case ROOM:
+        if (millis() - t_race_max > 360000) // se trascorsi 6 minuti
+        {
+            room_sect = 4; // imposta cerca uscita per terminare
+        }
+
+        if (room_sect == 1) // funz. cerca palline lungo perimetro
+        {
+            if (mem_findballs == 0) // se prima volta nel cerca perimetro
+            {
+                t_findballs = millis(); // attiva timer primo minuto
+                mem_findballs = 1;
+            }
+
+            if (millis() - t_findballs > 60000) // se trascorso un minuto lungo perimetro
+            {
+                room_sect = 2; // passa a ricerca random - 2
+            }
+
+            find_balls();
+        }
+
+        if (room_sect == 2) // cerca palline random
+        {
+            find_balls_random();
+        }
+
+        if (room_sect == 3) // consegna palline
+        {
+            put_balls();
+        }
+
+        if (room_sect == 4) // cerca uscita per terminare sez. ROOM
+        {
+            wall_follower();
+        }
+
+        break;
+    }
+}
+
+/* SEZIONE INTERRUPT */
+
+void int_pulse() // INTERRUPT fall_edge pulsante (eseguita su fronte in discesa del segnale)
+{
+    mot_sx.writeMicroseconds(ZERO_SX); // stop robot
+    mot_dx.writeMicroseconds(ZERO_DX);
+    mot_post.writeMicroseconds(ZERO_B);
+    digitalWrite(LED_G, LOW); // Leds spenti
+    digitalWrite(LED_R, LOW);
+    digitalWrite(LED_V, LOW);
+
+    stato = ATTESA; // reimposta stato attesa
+}

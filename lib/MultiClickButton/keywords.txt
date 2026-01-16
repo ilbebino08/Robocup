@@ -1,0 +1,31 @@
+#######################################
+# Syntax Coloring Map For MultiClickButton
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+MultiClickButton	KEYWORD1
+CallbackFunction	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+update	KEYWORD2
+onSingleClick	KEYWORD2
+onDoubleClick	KEYWORD2
+onTripleClick	KEYWORD2
+getClickCount	KEYWORD2
+isPaused	KEYWORD2
+setPaused	KEYWORD2
+togglePause	KEYWORD2
+handleInterrupt	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+MAX_BUTTONS	LITERAL1

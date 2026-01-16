@@ -1,0 +1,56 @@
+#include <Arduino.h>
+#include "robot.h"
+#include "MultiClickButton.h"
+#include <Servo.h>
+#include <sensorBoard.h>
+
+// Forward declarations
+void singoloClick();
+void doppioClick();
+void triploClick();
+
+MultiClickButton button(BUTTON);
+BottomSensor IR_board;
+
+uint16_t* sensor_values;
+
+void setup() {
+    Serial.begin(9600);
+    Serial1.begin(57600);
+
+    IR_board.start();
+
+    button.begin();
+    button.onSingleClick(singoloClick);
+    button.onDoubleClick(doppioClick);
+
+
+}
+
+void loop() {
+    button.update();
+    sensor_values = IR_board.utils.val_sensor();
+    //stampa valori sensori
+    for (int i = 0; i < 9; i++) {
+        Serial.print(sensor_values[i]);
+        Serial.print(" ");
+    }
+    Serial.println();
+}
+
+void singoloClick() {
+    Serial.println("Singolo Click Rilevato");
+    sensor_values = IR_board.utils.val_sensorCal();
+    //stampa valori sensori
+    for (int i = 0; i < 9; i++) {
+        Serial.print(sensor_values[i]);
+        Serial.print(" ");
+    }
+    Serial.println(IR_board.line());
+    delay(1000);
+}
+
+void doppioClick() {
+    Serial.println("Doppio Click Rilevato");
+    IR_board.utils.calibration();
+}
