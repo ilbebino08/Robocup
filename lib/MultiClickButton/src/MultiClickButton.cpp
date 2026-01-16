@@ -53,6 +53,8 @@ void MultiClickButton::begin() {
 void MultiClickButton::handleInterrupt() {
     unsigned long currentTime = millis();
     
+    Serial.println("INTERRUPT!");
+    
     // Every FALLING interrupt is a button press
     // But we only accept presses that arrive after at least 150ms from the last one
     // (this eliminates bounce from the previous click release)

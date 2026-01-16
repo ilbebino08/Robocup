@@ -30,7 +30,7 @@
 
 #define MSX_INV         false       // Inversione direzione motore sinistro
 #define MDX_INV         true        // Inversione direzione motore destro
-#define MPO_INV         false       // Inversione direzione motore posteriore
+#define MPO_INV         true       // Inversione direzione motore posteriore
 
 #define BUTTON          2           // Pin del pulsante di interrupt
 

@@ -71,9 +71,12 @@ void Motori::muovi(short vel, short ang){
     msx_vel = vel_sx;
     mdx_vel = vel_dx;
     
-
-    mpo_vel = (map(mdx_vel, MDX_MIN, MDX_MAX, MPO_MIN, MPO_MAX) + map(msx_vel, MSX_MIN, MSX_MAX, MPO_MIN, MPO_MAX)) / 2;
-    
+    // Il motore posteriore deve muoversi in base alla velocità, non ai motori frontali
+    if(vel >= 0){
+        mpo_vel = map(vel, 0, 1023, MPO_ZEROMIN, MPO_MAX);
+    } else {
+        mpo_vel = map(-vel, 0, 1023, MPO_ZEROMAX, MPO_MIN);
+    }
 
     if(MPO_INV){
         mpo_vel = MPO_ZERO - (mpo_vel - MPO_ZERO);

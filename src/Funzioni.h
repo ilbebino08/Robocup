@@ -17,6 +17,7 @@ void singoloClick() {
     Serial.println("Pressione singola rilevata!");
     motori.stop();
     braccio.riposo();
+    resetPID();
 }
 
 /**
@@ -25,6 +26,8 @@ void singoloClick() {
 void doppioClick() {
     // Azione da eseguire al doppio click del pulsante
     Serial.println("Pulsante premuto due volte!");
+    IR_board.utils.calibration();
+    resetPID();
 }
 
 /**
@@ -42,6 +45,6 @@ int statoLinea(){
     if(IR_board.checkGreenDx() and IR_board.checkGreenSx()) return DOPPIO_VERDE;
     if(IR_board.checkGreenSx())                             return VERDE_SX;
     if(IR_board.checkGreenDx())                             return VERDE_DX;
-    if(IR_board.line() != 1)                                return NO_LINEA;
+    if(IR_board.checkLinea() != 1)                          return NO_LINEA;
     return LINEA;
 }

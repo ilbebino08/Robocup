@@ -5,9 +5,10 @@
 #include "../../include/robot.h"
 
 // ===== COSTANTI PER IL PID LINE FOLLOWING =====
-#define KP           0.8    // Coefficiente proporzionale. Aumenta se il robot risponde lentamente alle curve, Diminuisci se oscilla (range: 0.5-2.0)
+// TODO: aumentare KP e KD dopo test
+#define KP           1.0    // Coefficiente proporzionale. Aumenta se il robot risponde lentamente alle curve, Diminuisci se oscilla (range: 0.5-2.0)
 #define KI           0.1    // Coefficiente integrale. Aumenta per eliminare errori persistenti, Diminuisci se causa oscillazioni (range: 0.0-0.5)
-#define KD           0.5    // Coefficiente derivativo. Aumenta per stabilizzare, Diminuisci se il robot diventa rigido (range: 0.2-1.5)
+#define KD           0.2    // Coefficiente derivativo. Aumenta per stabilizzare, Diminuisci se il robot diventa rigido (range: 0.2-1.5)
 #define MAX_STEERING 1750   // Massimo angolo di sterzata. Aumenta per curve più marcate, Diminuisci per movimenti più dolci (min: 500, max: 1750)
 
 // ===== VARIABILI GLOBALI PER IL PID (dichiarazioni esterne) =====
@@ -24,7 +25,7 @@ float integral_error = 0.0;
 float last_line_position = 0.0;
 unsigned long last_time = 0;
 
-bool pidLineFollowing(short base_vel) {
+short pidLineFollowing(short base_vel) {
     // Leggi la posizione della linea dal sensorBoard
     int16_t line_position = IR_board.line();
     
@@ -36,7 +37,7 @@ bool pidLineFollowing(short base_vel) {
     
     // ===== CALCOLO ERRORE =====
     // L'errore è la distanza dalla linea rispetto al centro (0)
-    float error = -line_position;  // Negativo perché il sensore ha convenzione opposta
+    float error = line_position;
     
     // ===== TERMINE PROPORZIONALE =====
     float p_term = KP * error;
@@ -71,7 +72,7 @@ bool pidLineFollowing(short base_vel) {
     last_line_position = error;
     last_time = current_time;
     
-    return true;
+    return steering_angle;
 }
 
 void resetPID() {

@@ -14,7 +14,7 @@
  * @return true se la linea è stata rilevata e il controllo è stato applicato
  * @return false se la linea non è stata rilevata
  */
-bool pidLineFollowing(short base_vel);
+short pidLineFollowing(short base_vel);
 
 /**
  * @brief Funzione di reset dei parametri PID.
