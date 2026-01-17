@@ -14,9 +14,15 @@
  */
 class Braccio {
     private:
-        Servo braccio;
-        Servo pinza;
+        Servo braccio;  // Oggetto Servo per il controllo del braccio
+        Servo pinza;    // Oggetto Servo per il controllo della pinza
     public:
+
+        /**
+         * @brief Inizializza il braccio e la pinza.
+         * 
+         * Configura i pin e posiziona il braccio e la pinza nella posizione di riposo.
+         */
         void init();
 
         /**
@@ -33,7 +39,7 @@ class Braccio {
          * @brief Prende la pallina.
          * 
          * @todo Implementare la logica per prendere la pallina.
-         * @return true se la pallina è stata presa con successo, false altrimenti.
+         * @return true se la pallina è viva, false altrimenti.
          */
         bool prendiPallina();
 };

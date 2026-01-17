@@ -5,19 +5,29 @@
 #include <Servo.h>
 #include "../../include/robot.h"
 
-
+/**
+ * @brief Classe per il controllo dei motori del robot.
+ * 
+ * Questa classe gestisce le operazioni di base
+ * dei motori del robot, inclusi il movimento e l'arresto.
+ */
 class Motori{
     private:
-        short msx_vel;
-        short mdx_vel;
-        short mpo_vel;
+        short msx_vel;  // Velocità motore sinistro
+        short mdx_vel;  // Velocità motore destro
+        short mpo_vel;  // Velocità motore posteriore
 
-        Servo mot_sx;
-        Servo mot_dx;
-        Servo mot_po;
+        Servo mot_sx;   // Oggetto Servo per il controllo del motore sinistro
+        Servo mot_dx;   // Oggetto Servo per il controllo del motore destro
+        Servo mot_po;   // Oggetto Servo per il controllo del motore posteriore
 
     public:
 
+    /**
+     * @brief Inizializza i motori.
+     * 
+     * Configura i pin e imposta le velocità iniziali dei motori.
+     */
     void init();
 
     /**
@@ -29,7 +39,7 @@ class Motori{
     void muovi(short vel, short ang);
 
     /**
-     * @brief Ferma tutti i motori riportandoli alla posizione di stop.
+     * @brief Ferma tutti i motori.
      */
     void stop();
 };

@@ -263,3 +263,28 @@ MultiClickButton(int pin, unsigned long clickTimeout = 500, unsigned long deboun
 * ESP32
 * ESP8266
 * Qualsiasi scheda con supporto agli interrupt hardware
+
+# Libreria `MultiClickButton`
+
+Gestisce la lettura di un pulsante con riconoscimento di click multipli (singolo, doppio, triplo click) e callback associate.
+
+## Funzionalità principali
+
+- **Gestione click**  
+  Riconosce singolo, doppio e triplo click.
+
+- **Callback**  
+  Permette di associare funzioni diverse a ciascun tipo di click.
+
+## Esempio d'uso
+
+```cpp
+button.onSingleClick(singoloClick);
+button.onDoubleClick(doppioClick);
+button.onTripleClick(triploClick);
+```
+
+## Note
+
+- Utile per test manuali e reset del PID.
+- La libreria si trova in `lib/MultiClickButton/`.
