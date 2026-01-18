@@ -52,4 +52,16 @@ void gestisciVerdeSinistra();
  */
 void gestisciVerdeDestra();
 
+/**
+ * @brief Determina e restituisce lo stato corrente della linea utilizzando `sensorBoard`.
+ *
+ * Questa funzione valuta i flag in `IR_board` per decidere lo stato fra:
+ * `LINEA`, `NO_LINEA`, `COL_RILEVATO`, `VERDE_SX`, `VERDE_DX`, `DOPPIO_VERDE`.
+ * È esposta perché può essere utile anche al chiamante; normalmente viene usata
+ * internamente dalla libreria.
+ *
+ * @return int Stato corrente della linea.
+ */
+int statoLinea();
+
 #endif
