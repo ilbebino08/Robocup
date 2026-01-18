@@ -6,6 +6,8 @@
 #include "MultiClickButton.h"
 #include "Funzioni.h"
 #include <braccio.h>
+#include <debug.h>
+#include <lineLogic.h>
 
 BottomSensor IR_board;
 Motori motori;
@@ -18,6 +20,11 @@ long lastNoLineaTime = 0;
 void setup() {
     Serial.begin(115200);
     Serial1.begin(57600);
+    Serial3.begin(9600);
+    
+    // Inizializza il sistema di debug
+    debug.begin(DEBUG_USB | DEBUG_BLUETOOTH); // Cambia a DEBUG_USB | DEBUG_BLUETOOTH per usare anche Bluetooth
+    debug.setBluetoothSerial(&Serial3);
     
     // Inizializza il sensorBoard
     IR_board.start();
@@ -46,46 +53,8 @@ void loop() {
     button.update();
     
     if(!button.isPaused()) {
-        switch (statoLinea())
-        {
-        case LINEA:
-            pidLineFollowing(DEFAULT_VELOCITY);
-            break;
-        case COL_RILEVATO:
-            motori.stop();
-            break;
-
-        case DOPPIO_VERDE:
-            
-            break;
-        case VERDE_SX:
-            
-            break;
-        case VERDE_DX:
-            
-            break;
-        case NO_LINEA:
-            motori.muovi(-400, 0);
-            lastNoLineaTime = millis();
-            if(millis() - lastNoLineaTime > 1000){
-                motori.stop();
-                button.setPaused(true);
-            } else {
-                motori.muovi(-400, 0);
-                timer = millis();
-                while (millis() - timer < 1000){
-                    button.update();
-                    IR_board.utils.val_sensor();
-                }
-            }
-
-
-            break;
-        default:
-            break;
-        }
-        
+        gestisciLinea(statoLinea());
     }
 }
 
-    
+
