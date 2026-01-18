@@ -49,16 +49,3 @@ void triploClick() {
     resetPID();
 }
 
-/**
- * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
- * 
- * @return int -> Stato della linea (LINEA, NO_LINEA, COL_RILEVATO, VERDE_SX, VERDE_DX, DOPPIO_VERDE).
- */
-int statoLinea(){
-    if(IR_board.checkColor())                               return COL_RILEVATO;
-    if(IR_board.checkGreenDx() and IR_board.checkGreenSx()) return DOPPIO_VERDE;
-    if(IR_board.checkGreenSx())                             return VERDE_SX;
-    if(IR_board.checkGreenDx())                             return VERDE_DX;
-    if(IR_board.checkLinea() != 1)                          return NO_LINEA;
-    return LINEA;
-}
