@@ -8,23 +8,48 @@
 #include <debug.h>
 #include "followLine.h"
 
-// Inizializzazione opzionale (chiama dal setup se necessario)
+/**
+ * @brief Inizializza lo stato interno della libreria lineLogic.
+ * 
+ * Azzera tutti i contatori, timer e imposta la macchina a stati per il verde
+ * in stato NORMALE. Chiamare dal setup() prima di iniziare il tracciamento.
+ */
 void initLineLogic();
 
-// Funzione principale che gestisce lo stato corrente della linea
-// Chiamare da loop(): gestisciLinea(statoLinea());
+/**
+ * @brief Gestisce lo stato corrente della linea e coordina le azioni del robot.
+ * 
+ * Funzione principale che implementa la logica di controllo basata sullo stato
+ * rilevato dai sensori. Delega l'attuazione alle librerie motori e followLine.
+ * Chiamare ad ogni iterazione del loop: gestisciLinea(statoLinea()).
+ * 
+ * @param stato Stato della linea ritornato da statoLinea() (LINEA, VERDE_SX, VERDE_DX, etc.)
+ */
 void gestisciLinea(int stato);
 
-// Funzioni per casi specifici (esposte per test o richieste speciali)
+/**
+ * @brief Gestisce l'intersezione con doppio verde.
+ * 
+ * Ferma il robot e lo mette in pausa. Tipicamente usato per fine percorso
+ * o punti di decisione che richiedono input esterno.
+ */
 void gestisciDoppioVerde();
-void gestisciVerdeSinistra();
-void gestisciVerdeDestra();
 
 /**
- * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
+ * @brief Gestisce la curva a sinistra quando rileva verde.
  * 
- * @return int -> Stato della linea (LINEA, NO_LINEA, COL_RILEVATO, VERDE_SX, VERDE_DX, DOPPIO_VERDE).
+ * Avvia la manovra di rotazione a sinistra in modo non bloccante.
+ * La funzione ritorna immediatamente dopo aver comandato i motori.
  */
-int statoLinea();
+void gestisciVerdeSinistra();
+
+/**
+ * @brief Gestisce la curva a destra con verifica intelligente della posizione del verde.
+ * 
+ * Implementa una macchina a stati (4 stati) per distinguere il verde prima della curva
+ * (da seguire) dal verde dopo la curva (da ignorare). Include verifica di consistenza
+ * e timeout per falsi positivi. Comportamento non bloccante.
+ */
+void gestisciVerdeDestra();
 
 #endif

@@ -3,6 +3,7 @@
 #include <sensorBoard.h>
 #include <motori.h>
 #include "../../include/robot.h"
+#include <debug.h>
 
 // ===== COSTANTI PER IL PID LINE FOLLOWING =====
 // TODO: aumentare KP e KD dopo test
@@ -94,4 +95,5 @@ void resetPID() {
     integral_error = 0.0;
     last_line_position = 0.0;
     last_time = millis();
+    debug.println("PID reset.");
 }
