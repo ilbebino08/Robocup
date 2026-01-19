@@ -14,6 +14,7 @@
 #include <braccio.h>
 #include <sensorBoard.h>
 #include <robot.h>
+#include <debug.h>
 
 extern BottomSensor IR_board;
 extern Motori motori;
@@ -24,7 +25,7 @@ extern Braccio braccio;
  * @brief Funzione chiamata al singolo click del pulsante.
  */
 void singoloClick() {
-    Serial.println("Pressione singola rilevata!");
+    debug.println("Pressione singola rilevata!");
     motori.stop();
     braccio.riposo();
     resetPID();
@@ -35,7 +36,7 @@ void singoloClick() {
  */
 void doppioClick() {
     // Azione da eseguire al doppio click del pulsante
-    Serial.println("Pulsante premuto due volte!");
+    debug.println("Pulsante premuto due volte!");
     IR_board.utils.calibration();
     resetPID();
 }
@@ -45,7 +46,7 @@ void doppioClick() {
  */
 void triploClick() {
     // Azione da eseguire al triplo click del pulsante
-    Serial.println("Pulsante premuto tre volte!");
+    debug.println("Pulsante premuto tre volte!");
     resetPID();
 }
 
