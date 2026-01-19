@@ -60,4 +60,5 @@ void loop() {
     if(!button.isPaused()) {
         gestisciLinea(statoLinea());
     }
+    
 }

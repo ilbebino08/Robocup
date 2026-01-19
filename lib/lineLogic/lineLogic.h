@@ -53,6 +53,15 @@ void gestisciVerdeSinistra();
 void gestisciVerdeDestra();
 
 /**
+ * @brief Gestisce il caso in cui la linea non è rilevata.
+ * 
+ * Verifica se è un'interruzione della linea (sensore frontale attivo, sensori posizione inattivi)
+ * o se la linea è effettivamente persa. Nel caso di interruzione, il robot avanza fino alla
+ * ricomparsa della linea. Se la linea è persa, il robot torna indietro lentamente.
+ */
+void gestisciNoLinea();
+
+/**
  * @brief Determina e restituisce lo stato corrente della linea utilizzando `sensorBoard`.
  *
  * Questa funzione valuta i flag in `IR_board` per decidere lo stato fra:

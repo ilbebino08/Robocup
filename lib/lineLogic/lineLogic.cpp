@@ -1,5 +1,8 @@
 #include "lineLogic.h"
 
+// Forward declarations
+void gestisciVerdeConLineaZero(int statoIniziale);
+
 // Parametri configurabili per le manovre
 #define VELOCITA_STERZATA   600      // Velocità durante la sterzata (-1023 a +1023)
 #define ANGOLO_STERZATA     1750     // Angolo durante la sterzata (-1750 a +1750)
@@ -25,7 +28,7 @@ struct StatoVerde {
     int contatoreConsecutivo;
     unsigned long tempoAvanzamento;
     int lineaIniziale;  // Valore della linea al momento del rilevamento
-
+    
     StatoVerde() : stato(S_NORMALE), tempoRilevazione(0), contatoreConsecutivo(0), tempoAvanzamento(0), lineaIniziale(0) {}
     
     void reset() {
@@ -56,17 +59,57 @@ struct StatoDoppioVerde {
 
 static StatoDoppioVerde statoDoppioVerde;
 
+// Stato per la gestione dell'interruzione di linea
+struct StatoInterruzione {
+    enum Stato { S_NORMALE = 0, S_FERMATO = 1, S_AVANTI_COLORE = 2, S_INDIETRO_COLORE = 3, S_CERCA_LINEA = 4, S_VERIFICA = 5, S_AVANZA_INTERRUZIONE = 6 };
+    Stato stato;
+    unsigned long tempoInizio;
+    
+    StatoInterruzione() : stato(S_NORMALE), tempoInizio(0) {}
+    
+    void reset() {
+        stato = S_NORMALE;
+        tempoInizio = 0;
+    }
+};
+
+static StatoInterruzione statoInterruzione;
+
+// Stato per la gestione del verde con linea a 0
+struct StatoVerdeZero {
+    enum Stato { S_NORMALE = 0, S_FERMO = 1, S_INDIETRO_VERIFICA = 2 };
+    Stato stato;
+    unsigned long tempoInizio;
+    
+    StatoVerdeZero() : stato(S_NORMALE), tempoInizio(0) {}
+    
+    void reset() {
+        stato = S_NORMALE;
+        tempoInizio = 0;
+    }
+};
+
+static StatoVerdeZero statoVerdeZero;
+
 /**
  * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
  * 
  * @return int -> Stato della linea (LINEA, NO_LINEA, COL_RILEVATO, VERDE_SX, VERDE_DX, DOPPIO_VERDE).
  */
 int statoLinea(){
+    // Prima controlla colori speciali
     if(IR_board.checkColor())                               return COL_RILEVATO;
     if(IR_board.checkGreenDx() and IR_board.checkGreenSx()) return DOPPIO_VERDE;
     if(IR_board.checkGreenSx())                             return VERDE_SX;
     if(IR_board.checkGreenDx())                             return VERDE_DX;
-    if(IR_board.checkLinea() != 1)                          return NO_LINEA;
+    
+    // Leggi la posizione della linea
+    int line_position = IR_board.line();
+    
+    // Se la linea è ai limiti estremi (-1750 o 1750), significa che è persa
+    if(line_position == -1750 || line_position == 1750)     return NO_LINEA;
+    
+    // In tutti gli altri casi (incluso line_position == 0), la linea è presente
     return LINEA;
 }
 
@@ -74,9 +117,40 @@ void initLineLogic() {
     statoVerdeDx.reset();
     statoVerdeSx.reset();
     statoDoppioVerde.reset();
+    statoInterruzione.reset();
+    statoVerdeZero.reset();
 }
 
 void gestisciLinea(int stato) {
+    debug.print("Stato linea rilevato: ");
+    debug.println(stato);
+
+    // Gestione LED in base allo stato
+    if (stato == VERDE_SX || stato == VERDE_DX || stato == DOPPIO_VERDE) {
+        digitalWrite(LED_V, HIGH);
+        digitalWrite(LED_R, LOW);
+        digitalWrite(LED_G, LOW);
+    } else if (statoInterruzione.stato != StatoInterruzione::S_NORMALE) {
+        digitalWrite(LED_R, HIGH);
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_G, LOW);
+    } else if (stato == LINEA) {
+        digitalWrite(LED_G, HIGH);
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_R, LOW);
+    } else {
+        digitalWrite(LED_V, LOW);
+        digitalWrite(LED_R, LOW);
+        digitalWrite(LED_G, LOW);
+    }
+
+    // Gestione speciale: se la linea è a 0, ferma e verifica il tipo di verde
+    int line_position = IR_board.line();
+    if (line_position == 0 && (stato == VERDE_SX || stato == VERDE_DX || stato == DOPPIO_VERDE || stato == LINEA)) {
+        gestisciVerdeConLineaZero(stato);
+        return;
+    }
+
     switch (stato) {
         case LINEA:
             debug.println("Seguendo la linea.");
@@ -84,6 +158,7 @@ void gestisciLinea(int stato) {
                 statoVerdeDx.reset();
             if (statoVerdeSx.stato != StatoVerde::S_NORMALE && statoVerdeSx.stato != StatoVerde::S_IN_MANOVRA) 
                 statoVerdeSx.reset();
+            statoVerdeZero.reset();
             pidLineFollowing(DEFAULT_VELOCITY);
             break;
 
@@ -104,8 +179,7 @@ void gestisciLinea(int stato) {
             break;
 
         case NO_LINEA:
-            motori.muovi(-400, 0);  // Retromarcia dritta
-            // comportamento di recupero: lascio che il loop principale gestisca pause
+            gestisciNoLinea();
             break;
 
         default:
@@ -234,4 +308,193 @@ void gestisciVerdeSinistra() {
 
 void gestisciVerdeDestra() {
     gestisciVerdeGenerico(statoVerdeDx, VERDE_DX, VELOCITA_STERZATA, ANGOLO_STERZATA, "destra");
+}
+
+void gestisciVerdeConLineaZero(int statoIniziale) {
+    switch (statoVerdeZero.stato) {
+        case StatoVerdeZero::S_NORMALE:
+            debug.println("Linea a 0 rilevata: fermo per verificare tipo verde");
+            motori.stop();
+            statoVerdeZero.stato = StatoVerdeZero::S_FERMO;
+            statoVerdeZero.tempoInizio = millis();
+            break;
+            
+        case StatoVerdeZero::S_FERMO:
+            // Attesa breve
+            if (millis() - statoVerdeZero.tempoInizio >= 200) {
+                debug.println("Vado indietro lentamente per verificare tipo verde");
+                statoVerdeZero.stato = StatoVerdeZero::S_INDIETRO_VERIFICA;
+                statoVerdeZero.tempoInizio = millis();
+            }
+            break;
+            
+        case StatoVerdeZero::S_INDIETRO_VERIFICA:
+            // Va indietro lentamente mentre verifica lo stato
+            motori.muovi(-300, 0);
+            
+            int statoCorrente = statoLinea();
+            int line_pos = IR_board.line();
+            
+            // Verifica il tipo di verde rilevato
+            if (statoCorrente == DOPPIO_VERDE) {
+                debug.println("Confermato DOPPIO VERDE");
+                statoVerdeZero.reset();
+                gestisciDoppioVerde();
+            } else if (statoCorrente == VERDE_SX) {
+                debug.println("Confermato VERDE SINISTRA");
+                statoVerdeZero.reset();
+                gestisciVerdeSinistra();
+            } else if (statoCorrente == VERDE_DX) {
+                debug.println("Confermato VERDE DESTRA");
+                statoVerdeZero.reset();
+                gestisciVerdeDestra();
+            } else if (line_pos != 0 || millis() - statoVerdeZero.tempoInizio >= 500) {
+                // La linea non è più a 0 o timeout: era solo linea dritta
+                debug.println("Era solo linea dritta, riprendo inseguimento");
+                statoVerdeZero.reset();
+            }
+            break;
+    }
+}
+
+void gestisciNoLinea() {
+    switch (statoInterruzione.stato) {
+        case StatoInterruzione::S_NORMALE:
+            // Prima volta che si rileva NO_LINEA: ferma e inizia la procedura
+            debug.println("Linea persa: inizio procedura verifica");
+            motori.stop();
+            statoInterruzione.stato = StatoInterruzione::S_FERMATO;
+            statoInterruzione.tempoInizio = millis();
+            break;
+            
+        case StatoInterruzione::S_FERMATO:
+            // Attesa breve dopo il fermo
+            if (millis() - statoInterruzione.tempoInizio >= 300) {
+                debug.println("Cerco colore avanti");
+                statoInterruzione.stato = StatoInterruzione::S_AVANTI_COLORE;
+                statoInterruzione.tempoInizio = millis();
+                IR_board.setCheckColor(3);
+            }
+            break;
+            
+        case StatoInterruzione::S_AVANTI_COLORE:
+            // Avanza per 500ms cercando un colore speciale
+            if (IR_board.checkColor()) {
+                debug.println("Colore rilevato!");
+                motori.stop();
+                statoInterruzione.reset();
+                // Qui potrebbe essere necessario cambiare stato globale
+            } else if (millis() - statoInterruzione.tempoInizio >= 500) {
+                debug.println("Cerco colore indietro");
+                statoInterruzione.stato = StatoInterruzione::S_INDIETRO_COLORE;
+                statoInterruzione.tempoInizio = millis();
+            } else {
+                motori.muovi(400, 0);  // Avanza
+            }
+            break;
+            
+        case StatoInterruzione::S_INDIETRO_COLORE:
+            // Torna indietro per 500ms cercando un colore speciale
+            if (IR_board.checkColor()) {
+                debug.println("Colore rilevato!");
+                motori.stop();
+                statoInterruzione.reset();
+            } else if (millis() - statoInterruzione.tempoInizio >= 500) {
+                debug.println("Torno indietro a cercare la linea");
+                statoInterruzione.stato = StatoInterruzione::S_CERCA_LINEA;
+            } else {
+                motori.muovi(-400, 0);  // Indietro
+            }
+            break;
+            
+        case StatoInterruzione::S_CERCA_LINEA:
+            // Continua indietro fino a ritrovare la linea
+            if (statoLinea() == LINEA) {
+                int line_pos = IR_board.line();
+                // Se la linea è nel range centrale, è probabilmente un'interruzione
+                if (line_pos >= -500 && line_pos <= 500) {
+                    debug.println("Linea in range centrale: interruzione confermata");
+                    motori.stop();
+                    statoInterruzione.stato = StatoInterruzione::S_AVANZA_INTERRUZIONE;
+                } else {
+                    debug.println("Linea ritrovata, continuo indietro");
+                    statoInterruzione.stato = StatoInterruzione::S_VERIFICA;
+                    statoInterruzione.tempoInizio = millis();
+                }
+            } else {
+                motori.muovi(-400, 0);  // Continua indietro
+            }
+            break;
+            
+        case StatoInterruzione::S_VERIFICA:
+            // Continua indietro per altri 400ms dopo aver ritrovato la linea
+            if (millis() - statoInterruzione.tempoInizio >= 400) {
+                motori.stop();
+                
+                // Verifica se è un'interruzione o una rotatoria
+                if (IR_board.checkLinea()) {
+                    int line_pos = IR_board.line();
+                    if (line_pos >= -500 && line_pos <= 500) {
+                        debug.println("Interruzione confermata: inizio avanzamento");
+                        statoInterruzione.stato = StatoInterruzione::S_AVANZA_INTERRUZIONE;
+                    } else {
+                        debug.println("Linea fuori range: ripristino");
+                        statoInterruzione.reset();
+                        resetPID();
+                    }
+                } else {
+                    // Non è un'interruzione: la linea è stata persa
+                    // Determina la direzione dell'errore e correggi con velocità maggiore
+                    int line_position = IR_board.line();
+                    
+                    if (line_position <= -1690) {
+                        // Errore a sinistra: ruota a sinistra
+                        debug.println("Rotatoria/fuori percorso: correzione ampia a SINISTRA");
+                        motori.muovi(600, -1750);  // Sterzata ampia a sinistra con velocità maggiore
+                    } else if (line_position >= 1690) {
+                        // Errore a destra: ruota a destra
+                        debug.println("Rotatoria/fuori percorso: correzione ampia a DESTRA");
+                        motori.muovi(600, 1750);  // Sterzata ampia a destra con velocità maggiore
+                    } else {
+                        debug.println("Rotatoria o fuori percorso: ripristino");
+                    }
+                    
+                    statoInterruzione.reset();
+                    resetPID();
+                }
+            } else {
+                motori.muovi(-400, 0);  // Continua indietro
+            }
+            break;
+            
+        case StatoInterruzione::S_AVANZA_INTERRUZIONE:
+            // Avanza fino a quando la linea non ricompare sotto i sensori laterali
+            // Controlla anche se ci sono verdi durante l'avanzamento
+            if (IR_board.checkGreenDx() || IR_board.checkGreenSx()) {
+                debug.println("Verde rilevato durante interruzione: ripristino per gestione verde");
+                statoInterruzione.reset();
+                resetPID();
+                break;
+            }
+            
+            int line_position = IR_board.line();
+            
+            // Se la linea non è più ai limiti, l'abbiamo ritrovata
+            if (line_position != -1750 && line_position != 1750) {
+                debug.println("Linea ritrovata dopo interruzione: ripristino normale");
+                statoInterruzione.reset();
+                resetPID();
+            } else {
+                // Continua ad avanzare
+                motori.muovi(500, 0);
+            }
+            break;
+    }
+    
+    // Se siamo tornati in LINEA durante la gestione, resetta lo stato (tranne durante avanzamento interruzione)
+    if (statoLinea() == LINEA && statoInterruzione.stato != StatoInterruzione::S_CERCA_LINEA 
+        && statoInterruzione.stato != StatoInterruzione::S_VERIFICA
+        && statoInterruzione.stato != StatoInterruzione::S_AVANZA_INTERRUZIONE) {
+        statoInterruzione.reset();
+    }
 }

@@ -7,9 +7,9 @@
 
 // ===== COSTANTI PER IL PID LINE FOLLOWING =====
 // TODO: aumentare KP e KD dopo test
-#define KP           1.0    // Coefficiente proporzionale. Aumenta se il robot risponde lentamente alle curve, Diminuisci se oscilla (range: 0.5-2.0)
+#define KP           2.0    // Coefficiente proporzionale. Aumenta se il robot risponde lentamente alle curve, Diminuisci se oscilla (range: 0.5-2.0)
 #define KI           0.1    // Coefficiente integrale. Aumenta per eliminare errori persistenti, Diminuisci se causa oscillazioni (range: 0.0-0.5)
-#define KD           0.2    // Coefficiente derivativo. Aumenta per stabilizzare, Diminuisci se il robot diventa rigido (range: 0.2-1.5)
+#define KD           0.4    // Coefficiente derivativo. Aumenta per stabilizzare, Diminuisci se il robot diventa rigido (range: 0.2-1.5)
 #define MAX_STEERING 1750   // Massimo angolo di sterzata. Aumenta per curve più marcate, Diminuisci per movimenti più dolci (min: 500, max: 1750)
 
 // ===== VARIABILI GLOBALI PER IL PID (dichiarazioni esterne) =====

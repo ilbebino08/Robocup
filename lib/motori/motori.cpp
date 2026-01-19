@@ -26,38 +26,36 @@ void Motori::muovi(short vel, short ang){
     
     short vel_sx, vel_dx;
     
-    if(vel==0){
-        if(ang < 0){
-            vel_sx = map(ang, 0, -1750, MSX_ZEROMAX, MSX_MAX);
-            vel_dx = map(ang, 0, -1750, MDX_ZEROMIN, MDX_MIN);
-        }
-        else{
-            vel_sx = map(ang, 0, 1750, MSX_ZEROMIN, MSX_MIN);
-            vel_dx = map(ang, 0, 1750, MDX_ZEROMAX, MDX_MAX);
-        }
+    // Calcola la componente di velocità in avanti (identica per entrambi i motori)
+    short vel_avanti;
+    if(vel >= 0){
+        vel_avanti = map(vel, 0, 1023, 0, MSX_MAX - MSX_ZERO);
+    } else {
+        vel_avanti = -map(-vel, 0, 1023, 0, MSX_ZERO - MSX_MIN);
     }
-    else if(vel>0){
-        vel_sx = map(vel, 0, 1023, MSX_ZEROMIN, MSX_MAX);
-        vel_dx = map(vel, 0, 1023, MDX_ZEROMIN, MDX_MAX);
-        
-        if(ang < 0){
-            vel_sx = map(ang, 0, -1750, vel_sx, MSX_ZEROMIN);
-        }
-        else{
-            vel_dx = map(ang, 0, 1750, vel_dx, MDX_ZEROMIN);
-        }
+    
+    // Calcola la componente laterale per la sterzata (indipendente dalla velocità)
+    short componente_laterale_sx, componente_laterale_dx;
+    if(ang < 0){
+        // Sterza a sinistra: sx rallenta/indietro, dx accelera/avanti
+        componente_laterale_sx = map(-ang, 0, 1750, 0, -(MSX_ZERO - MSX_MIN));
+        componente_laterale_dx = map(-ang, 0, 1750, 0, MSX_MAX - MSX_ZERO);
+    } else if(ang > 0){
+        // Sterza a destra: sx accelera/avanti, dx rallenta/indietro
+        componente_laterale_sx = map(ang, 0, 1750, 0, MSX_MAX - MSX_ZERO);
+        componente_laterale_dx = map(ang, 0, 1750, 0, -(MSX_ZERO - MSX_MIN));
+    } else {
+        componente_laterale_sx = 0;
+        componente_laterale_dx = 0;
     }
-    else{
-        vel_sx = map(-vel, 0, 1023, MSX_ZEROMAX, MSX_MIN);
-        vel_dx = map(-vel, 0, 1023, MDX_ZEROMAX, MDX_MIN);
-        
-        if(ang < 0){
-            vel_sx = map(ang, 0, -1750, vel_sx, MSX_ZEROMAX);
-        }
-        else{
-            vel_dx = map(ang, 0, 1750, vel_dx, MDX_ZEROMAX);
-        }
-    }
+    
+    // Combina le componenti
+    vel_sx = MSX_ZERO + vel_avanti + componente_laterale_sx;
+    vel_dx = MDX_ZERO + vel_avanti + componente_laterale_dx;
+    
+    // Limita i valori ai range validi
+    vel_sx = constrain(vel_sx, MSX_MIN, MSX_MAX);
+    vel_dx = constrain(vel_dx, MDX_MIN, MDX_MAX);
     
     if(MSX_INV){
         vel_sx = MSX_ZERO - (vel_sx - MSX_ZERO);
@@ -71,25 +69,12 @@ void Motori::muovi(short vel, short ang){
     msx_vel = vel_sx;
     mdx_vel = vel_dx;
 
-    // Calcola la velocità media dei motori anteriori in scala [-1023, 1023]
-    int vel_sx_norm, vel_dx_norm;
-    if (vel >= 0) {
-        vel_sx_norm = map(vel_sx, MSX_ZEROMIN, MSX_MAX, 0, 1023);
-        vel_dx_norm = map(vel_dx, MDX_ZEROMIN, MDX_MAX, 0, 1023);
-    } else {
-        vel_sx_norm = -map(vel_sx, MSX_ZEROMAX, MSX_MIN, 0, 1023);
-        vel_dx_norm = -map(vel_dx, MDX_ZEROMAX, MDX_MIN, 0, 1023);
-    }
-    int vel_media = (vel_sx_norm + vel_dx_norm) / 2;
+    // Calcola la velocità del motore posteriore come media dei due motori anteriori, considerando le inversioni
+    short vel_sx_eff = MSX_INV ? (MSX_ZERO - (msx_vel - MSX_ZERO)) : msx_vel;
+    short vel_dx_eff = MDX_INV ? (MDX_ZERO - (mdx_vel - MDX_ZERO)) : mdx_vel;
+    mpo_vel = (vel_sx_eff + vel_dx_eff) / 2;
 
-    // Il motore posteriore segue la media delle anteriori
-    if (vel_media >= 0) {
-        mpo_vel = map(vel_media, 0, 1023, MPO_ZEROMIN, MPO_MAX);
-    } else {
-        mpo_vel = map(-vel_media, 0, 1023, MPO_ZEROMAX, MPO_MIN);
-    }
-
-    if(MPO_INV){
+    if (MPO_INV) {
         mpo_vel = MPO_ZERO - (mpo_vel - MPO_ZERO);
     }
 
