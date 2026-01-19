@@ -291,5 +291,8 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "files.associations": {
     "*.cpp.bak": "cpp"
-}
+},
+"cSpell.words": [
+  "ipch"
+]
 }
