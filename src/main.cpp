@@ -28,9 +28,12 @@ void setup() {
     
     // Inizializza il sensorBoard
     IR_board.start();
+    debug.println("Sensor board inizializzata.");
     
     // Resetta lo stato PID
     resetPID();
+
+    debug.println("Button inizializzato.");
 
     // Inizializza il button
     button.begin();
@@ -41,8 +44,10 @@ void setup() {
     button.onTripleClick(triploClick);
 
     braccio.init();
+    debug.println("Braccio inizializzato.");
 
     motori.init();
+    debug.println("Motori inizializzati.");
 
     braccio.riposo();
 
@@ -56,5 +61,3 @@ void loop() {
         gestisciLinea(statoLinea());
     }
 }
-
-

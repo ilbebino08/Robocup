@@ -3,6 +3,7 @@
 */
 
 #include "MultiClickButton.h"
+#include <debug.h>
 
 // Global array initialization
 MultiClickButton* buttonInstances[MAX_BUTTONS] = {nullptr, nullptr, nullptr, nullptr};
@@ -53,7 +54,7 @@ void MultiClickButton::begin() {
 void MultiClickButton::handleInterrupt() {
     unsigned long currentTime = millis();
     
-    Serial.println("INTERRUPT!");
+    debug.println("INTERRUPT!");
     
     // Every FALLING interrupt is a button press
     // But we only accept presses that arrive after at least 150ms from the last one

@@ -1,16 +1,16 @@
 #include "lineLogic.h"
 
 // Parametri configurabili per le manovre
-#define VELOCITA_STERZATA 300        // Velocità durante la sterzata (-1023 a +1023)
-#define ANGOLO_STERZATA 1200         // Angolo durante la sterzata (-1750 a +1750)
-#define TEMPO_STERZATA 300           // Tempo di sterzata in millisecondi
-#define SOGLIA_SCOSTAMENTO 1000      // Soglia per rilevare scostamento linea
-#define TEMPO_VERIFICA 250           // Tempo di verifica prima della decisione
-#define CONTATORE_CONFERMA 3         // Numero di letture consecutive per conferma verde
+#define VELOCITA_STERZATA   600      // Velocità durante la sterzata (-1023 a +1023)
+#define ANGOLO_STERZATA     1750     // Angolo durante la sterzata (-1750 a +1750)
+#define TEMPO_STERZATA      300      // Tempo di sterzata in millisecondi
+#define SOGLIA_SCOSTAMENTO  1500     // Soglia per rilevare scostamento linea
+#define TEMPO_VERIFICA      250      // Tempo di verifica prima della decisione
+#define CONTATORE_CONFERMA  3        // Numero di letture consecutive per conferma verde
 #define TIMEOUT_FALSO_VERDE 500      // Timeout per rilevare un falso verde
-#define VELOCITA_180 200             // Velocità durante la rotazione di 180 gradi (-1023 a +1023)
-#define ANGOLO_180 1750              // Angolo per rotazione sul posto (massimo)
-#define TEMPO_180 1000               // Tempo per completare la rotazione di 180 gradi
+#define VELOCITA_180        0        // Velocità durante la rotazione di 180 gradi (-1023 a +1023)
+#define ANGOLO_180          1750     // Angolo per rotazione sul posto (massimo)
+#define TEMPO_180           1000     // Tempo per completare la rotazione di 180 gradi
 
 // Riferimenti agli oggetti globali definiti in main.cpp
 extern Motori motori;
