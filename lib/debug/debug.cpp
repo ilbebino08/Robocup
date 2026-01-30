@@ -9,6 +9,7 @@ Debug::Debug() {
     bluetoothSerial = nullptr;
     sdEnabled = false;
     logFileName = "";
+    lastMessage = "";
 }
 
 void Debug::begin(uint8_t outputs) {
@@ -129,6 +130,13 @@ void Debug::println(const String& message) {
 }
 
 void Debug::println(const char* message) {
+    // Controlla se il messaggio è uguale all'ultimo inviato
+    if (String(message) == lastMessage) {
+        return; // Non inviare messaggi duplicati
+    }
+    
+    lastMessage = String(message);
+    
     if (outputMask & DEBUG_USB) {
         Serial.println(message);
     }
@@ -143,6 +151,15 @@ void Debug::println(const char* message) {
 }
 
 void Debug::println(int value) {
+    String valueStr = String(value);
+    
+    // Controlla se il messaggio è uguale all'ultimo inviato
+    if (valueStr == lastMessage) {
+        return; // Non inviare messaggi duplicati
+    }
+    
+    lastMessage = valueStr;
+    
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
     }
@@ -157,6 +174,15 @@ void Debug::println(int value) {
 }
 
 void Debug::println(float value) {
+    String valueStr = String(value);
+    
+    // Controlla se il messaggio è uguale all'ultimo inviato
+    if (valueStr == lastMessage) {
+        return; // Non inviare messaggi duplicati
+    }
+    
+    lastMessage = valueStr;
+    
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
     }
@@ -171,6 +197,15 @@ void Debug::println(float value) {
 }
 
 void Debug::println(double value) {
+    String valueStr = String(value);
+    
+    // Controlla se il messaggio è uguale all'ultimo inviato
+    if (valueStr == lastMessage) {
+        return; // Non inviare messaggi duplicati
+    }
+    
+    lastMessage = valueStr;
+    
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
     }

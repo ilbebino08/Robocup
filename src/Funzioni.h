@@ -47,6 +47,7 @@ void doppioClick() {
 void triploClick() {
     // Azione da eseguire al triplo click del pulsante
     debug.println("Pulsante premuto tre volte!");
+    IR_board.utils.greenDxCalibration();
     resetPID();
 }
 

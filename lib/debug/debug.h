@@ -18,6 +18,7 @@ private:
     File logFile;
     bool sdEnabled;
     String logFileName;
+    String lastMessage;
     
 public:
     Debug();

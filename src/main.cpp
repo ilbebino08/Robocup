@@ -52,13 +52,37 @@ void setup() {
     braccio.riposo();
 
     motori.stop();
+
+    pinMode(LED_R, OUTPUT);
+    pinMode(LED_G, OUTPUT);
+    pinMode(LED_V, OUTPUT);
 }
 
 void loop() {
     button.update();
-    
+
+    // Controllo seriale Bluetooth
+    if(Serial3.available()) {
+        int valore = Serial3.read();
+        if(valore == '1') {
+            debug.println("Ricevuto comando 1");
+            IR_board.utils.calibration();
+        }
+        else if(valore == '2') {
+            // Azione per comando 2
+            debug.println("Ricevuto comando 2");
+            IR_board.utils.greenDxCalibration();
+        }
+        else if(valore == '3') {
+            // Azione per comando 3
+            debug.println("Ricevuto comando 3");
+            IR_board.utils.greenSxCalibration();
+        }
+    }
+
     if(!button.isPaused()) {
         gestisciLinea(statoLinea());
     }
-    
+
+
 }
