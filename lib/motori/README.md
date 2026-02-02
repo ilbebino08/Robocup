@@ -2,59 +2,97 @@
 
 Gestisce il controllo dei 3 motori servo per la trazione del robot.
 
-## Caratteristiche
-
-- Controllo indipendente di velocità e direzione
-- Movimento differenziale con 3 motori (2 anteriori + 1 posteriore)
-- Velocità e angolo trattati come componenti indipendenti
-- Inversione motori configurabile
-- Limiti di sicurezza sui valori
-
 ## Architettura
 
-### Logica di Movimento
+Sistema di locomozione omnidirezionale a 3 ruote:
+- 2 motori anteriori (sinistro e destro): propulsione principale
+- 1 motore posteriore: sterzo omnidirezionale
 
-Il sistema tratta **velocità** e **angolo** come componenti indipendenti:
+## Caratteristiche
 
-- **Velocità (vel)**: Componente di movimento in avanti/indietro (-1023 a +1023)
-- **Angolo (ang)**: Componente di sterzata laterale (-1750 a +1750)
-
-Le due componenti vengono combinate:
-```
-vel_motore_sx = ZERO + vel_avanti + componente_laterale_sx
-vel_motore_dx = ZERO + vel_avanti + componente_laterale_dx
-```
-
-Questo permette curve rapide anche a bassa velocità.
-
-### Motore Posteriore
-
-Il motore posteriore segue la media dei due motori anteriori, considerando le eventuali inversioni.
+- Controllo differenziale con sterzo posteriore indipendente
+- Velocità e angolo come parametri separati
+- Inversione motori configurabile per correggere cablaggi
+- Deadzone configurabile per motori a riposo
+- Limiti di sicurezza su velocità e sterzo
 
 ## API
 
 ### `void init()`
-Inizializza i 3 motori e imposta le velocità iniziali a zero.
+Inizializza i 3 motori servo e imposta i valori a zero (fermo).
 
-### `void muovi(short vel, short ang)`
-Comanda i motori con velocità e angolo specificati.
-- `vel`: -1023 (indietro massimo) a +1023 (avanti massimo)
-- `ang`: -1750 (sinistra massimo) a +1750 (destra massimo)
+**Esempio:**
+```cpp
+Motori motori;
+motori.init();
+```
+
+### `void Muovi(short vel, short ang)`
+Comanda i motori con velocità e angolo di sterzo specificati.
+
+**Parametri:**
+- `vel`: velocità [-1023, +1023]
+  - Positivo: avanti
+  - Negativo: indietro
+  - Zero: fermo
+  - Controlla entrambi i motori anteriori in modo uguale
+
+- `ang`: angolo sterzo [-1750, +1750]
+  - Negativo: ruota posteriore a sinistra
+  - Zero: ruota posteriore centrata
+  - Positivo: ruota posteriore a destra
+  - Controlla solo il motore posteriore
+
+**Mapping velocità:**
+- Avanti (vel ≥ 0): `map(vel, 0, 1023, ZEROMIN, MAX)`
+- Indietro (vel < 0): `map(abs(vel), 0, 1023, ZEROMAX, MIN)`
+
+**Mapping sterzo:**
+- `map(ang, -1750, 1750, MIN, MAX)` applicato al motore posteriore
+
+**Esempio:**
+```cpp
+motori.Muovi(500, 0);      // Avanti dritto
+motori.Muovi(500, 1750);   // Avanti con sterzo destro massimo
+motori.Muovi(-300, -500);  // Indietro con sterzo sinistro
+```
 
 ### `void stop()`
 Ferma tutti i motori impostando i valori ZERO.
 
+**Esempio:**
+```cpp
+motori.stop();
+```
+
 ## Configurazione
 
 Definita in `include/robot.h`:
-- Pin dei motori: `MSX_PIN`, `MDX_PIN`, `MPO_PIN`
-- Range velocità: `MSX_MIN/MAX`, `MDX_MIN/MAX`, `MPO_MIN/MAX`
-- Valori zero: `MSX_ZERO`, `MDX_ZERO`, `MPO_ZERO`
-- Inversioni: `MSX_INV`, `MDX_INV`, `MPO_INV`
 
-## Esempio d'uso
+**Pin dei motori:**
+- `MSX_PIN` (30): motore sinistro anteriore
+- `MDX_PIN` (29): motore destro anteriore  
+- `MPO_PIN` (27): motore posteriore omnidirezionale
+
+**Range PWM (µs):**
+- MIN (500): massima velocità inversa
+- MAX (2000): massima velocità avanti
+- ZERO (1500): fermo
+- ZEROMIN (1450): limite inferiore deadzone
+- ZEROMAX (1550): limite superiore deadzone
+
+**Inversioni:**
+- `MSX_INV` (false): inversione motore sinistro
+- `MDX_INV` (true): inversione motore destro
+- `MPO_INV` (true): inversione motore posteriore
+
+La formula di inversione: `output = ZERO - (value - ZERO)` riflette il valore attorno al centro.
+
+## Esempio Completo
 
 ```cpp
+#include <motori.h>
+
 Motori motori;
 
 void setup() {
@@ -62,10 +100,23 @@ void setup() {
 }
 
 void loop() {
-    motori.muovi(500, 0);     // Avanti dritto
+    // Avanti dritto per 2 secondi
+    motori.Muovi(500, 0);
+    delay(2000);
+    
+    // Curva destra per 1 secondo
+    motori.Muovi(500, 1000);
     delay(1000);
-    motori.muovi(500, 1750);  // Avanti con sterzata destra massima
-    delay(1000);
+    
+    // Ferma
     motori.stop();
+    delay(1000);
+    
+    // Indietro con sterzo sinistro
+    motori.Muovi(-400, -800);
+    delay(1500);
+    
+    motori.stop();
+    delay(2000);
 }
 ```

@@ -68,7 +68,7 @@ Vedi [include/robot.h](include/robot.h) per il mapping completo dei pin e i valo
 
 Il robot implementa una **macchina a stati** per distinguere il verde prima della curva (da seguire) dal verde dopo la curva (da ignorare):
 
-- **VERDE_SX**: Rotazionmacchina a stati per distinguere il verde prima della curva (da seguire) dal verde dopo la curva (da ignorare):
+- **VERDE_SX**: Macchina a stati per distinguere il verde prima della curva (da seguire) dal verde dopo la curva (da ignorare):
 
 - VERDE_SX: Rotazione a sinistra di 90°
 - VERDE_DX: Rotazione a destra di 90° con verifica intelligente
