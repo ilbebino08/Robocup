@@ -1,56 +1,124 @@
-# Progetto RoboCup - Robot Line Follower
+# RoboCup 2026 - Robot Line Follower
 
-Progetto per robot line follower per competizione RoboCup sviluppato per Arduino Mega 2560.
+Codice scheda master del robot Mt20-16 per RoboCup Junior Rescue Line.
 
 ## Descrizione
 
-Il robot è progettato per seguire linee nere, gestire intersezioni con marcatori verdi, rilevare interruzioni di linea e raccogliere oggetti con un braccio meccanico.
+Robot line follower omnidirezionale a 3 ruote progettato per la categoria RoboCup Junior Rescue Line. Il robot è capace di:
 
-## Caratteristiche Principali
+- Seguire linee nere con precisione usando un controllore PID
+- Rilevare e gestire intersezioni con marcatori verdi (sinistra, destra, doppio verde)
+- Attraversare interruzioni di linea (gap detection)
+- Raddrizzarsi automaticamente agli incroci per evitare deviazioni
+- Raccogliere e rilasciare oggetti con braccio meccanico
+- Debug in tempo reale via USB e Bluetooth
 
-- **Inseguimento linea**: PID controller per seguire linee nere con precisione
-- **Gestione intersezioni**: Rilevamento e gestione intelligente di marcatori verdi (sinistra, destra, doppio)
-- **Interruzioni linea**: Rilevamento e attraversamento automatico di gap nella linea
-- **Raccolta oggetti**: Braccio meccanico con servo per presa e rilascio
-- **Debug multi-canale**: Output su USB, Bluetooth e SD card
-- **Sensori multipli**: Array di sensori IR, sensori di colore, TOF laser
+## Architettura del Progetto
 
-## Struttura del Progetto
+### Struttura Directory
+
+```
+Robocup/
+├── src/                  # Codice principale
+│   └── main.cpp          # Entry point e loop principale
+├── include/              # Header globali
+│   └── robot.h           # Configurazione pin e costanti
+├── lib/                  # Librerie custom
+│   ├── motori/           # Controllo motori omnidirezionali
+│   ├── sensorBoard/      # Gestione array sensori IR e colore
+│   ├── lineLogic/        # Logica stati e decisioni
+│   ├── followLine/       # Algoritmo PID per line following
+│   ├── braccio/          # Controllo servo braccio/pinza
+│   ├── debug/            # Sistema debug multi-canale
+│   └── MultiClickButton/ # Gestione pulsante con multi-click
+└── platformio.ini        # Configurazione build e dipendenze
+```
 
 ### Librerie Principali
 
-- **motori**: Controllo dei 3 motori (sinistro, destro, posteriore) con movimento differenziale
-- **sensorBoard**: Gestione array sensori IR e sensori colore
-- **lineLogic**: Logica principale per inseguimento linea e gestione stati
-- **followLine**: Implementazione algoritmo PID per line following
-- **braccio**: Controllo servo per braccio di presa
-- **debug**: Sistema di debug multi-output (USB/Bluetooth/SD)
-- **MultiClickButton**: Gestione pulsanti con rilevamento click singoli/doppi/tripli
+| Libreria | Funzione |
+|----------|----------|
+| **motori** | Controllo 3 motori servo (2 anteriori + 1 posteriore omnidirezionale) |
+| **sensorBoard** | Lettura array 8 sensori IR + 2 sensori colore AS7341 |
+| **lineLogic** | Macchina a stati per gestione linea, intersezioni, verde |
+| **followLine** | Controllore PID per calcolo errore e correzione traiettoria |
+| **braccio** | Controllo 2 servo (braccio + pinza) per raccolta oggetti |
+| **debug** | Output simultaneo su USB, Bluetooth, SD card |
+| **MultiClickButton** | Rilevamento click singoli/doppi/tripli con debounce |
 
-### Hardware
+## Hardware
 
-- Arduino Mega 2560
-- 3 motori servo per trazione
-- Array 8 sensori IR per linea + 1 sensore frontale
-- 2 sensori colore AS7341 per rilevamento verde
-- 6 sensori TOF VL53L0X per distanze
-- Servo per braccio meccanico
-- Modulo Bluetooth HC-05/06
-- LED RGB per feedback visivo
+### Componenti Principali
 
-## Compilazione e Upload
+- **Microcontroller**: Arduino Mega 2560 (ATmega2560)
+- **Motori**: 3x servo a rotazione continua (2 anteriori + 1 posteriore sterzo)
+- Microcontroller: Arduino Mega 2560 (ATmega2560)
+- Motori: 3x servo a rotazione continua (2 anteriori + 1 posteriore sterzo)
+- IR_Board
+- Sensori distanza: 6x VL53L0X Time-of-Flight laser (ostacoli/vittime)
+- Braccio: 2x micro servo (shoulder + gripper)
+- Feedback: LED RGB (rosso, verde, giallo) per stato robot
+- Pulsante di interrupt
 
-```bash
-platformio run --target upload
-```
+Vedi [include/robot.h](include/robot.h) per il mapping completo dei pin e i valori di calibrazione dei motori.
 
-## Configurazione
+## Funzionalità Avanzate
 
-I parametri principali sono configurabili in:
-- `include/robot.h`: Pin mapping e costanti hardware
-- `lib/lineLogic/lineLogic.cpp`: Parametri PID e comportamenti
-- `lib/followLine/followLine.h`: Costanti PID
+### Gestione Intersezioni Verdi
 
-## Autori
+Il robot implementa una **macchina a stati** per distinguere il verde prima della curva (da seguire) dal verde dopo la curva (da ignorare):
 
-Team RoboCup 2026
+- **VERDE_SX**: Rotazionmacchina a stati per distinguere il verde prima della curva (da seguire) dal verde dopo la curva (da ignorare):
+
+- VERDE_SX: Rotazione a sinistra di 90°
+- VERDE_DX: Rotazione a destra di 90° con verifica intelligente
+- DOPPIO_VERDE agli Incroci
+
+Feature recente (commit `9565883`): il robot si raddrizza automaticamente quando rileva un incrocio verde, evitando di deviare dalla traiettoria corretta.
+
+### Controllore PID
+
+Parametri PID ottimizzati per line following fluido:
+- Kp: Guadagno proporzionale (risposta immediata)
+- Ki: Guadagno integrale (correzione offset)
+- Kd: Guadagno derivativo (smoothing e anticipazione)
+
+Modifica i parametri in [lib/followLine/followLine.h](lib/followLine/followLine.h) per ottimizzare le prestazioni.
+
+## Debug & Testing
+
+### Monitor Seriale
+
+Monitor seriale a 115200 baud
+
+### Debug Bluetooth
+
+Modulo Bluetooth (default: 57600 baud).
+
+## Calibrazione Motori
+
+Modifica in [include/robot.h](include/robot.h):
+- `MSX_MIN`, `MSX_MAX`: Range motore sinistro
+- `MDX_MIN`, `MDX_MAX`: Range motore destro  
+- `MPO_MIN`, `MPO_MAX`: Range motore posteriore
+- `MSX_INV`, `MDX_INV`, `MPO_INV`: Flag inversione direzione
+
+### Tuning PID
+
+Modifica in [lib/followLine/followLine.h](lib/followLine/followLine.h):
+- Aumenta `Kp` per risposta più aggressiva
+- Aumenta `Kd` per maggiore stabilità
+- Aggiungi `Ki` solo se necessario (drift correction)
+
+### Soglie Sensori
+
+Modifica in [lib/lineLogic/lineLogic.cpp](lib/lineLogic/lineLogic.cpp):
+- Soglie rilevamento verde
+- Timeout gap detection
+- Durate rotazioni
+
+---
+
+## Team
+
+Team RoboCup 2026 - Mt20-16
