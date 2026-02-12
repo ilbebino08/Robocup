@@ -62,6 +62,14 @@
 #define XSHUT_PALLINA   48          // Pin XSHUT sensore pallina
 #define XSHUT_FRONT     49          // Pin XSHUT sensore frontale
 
+const uint8_t ADDR_FRONT  = 0x30;
+const uint8_t ADDR_ANTSX  = 0x31;
+const uint8_t ADDR_ANTDX  = 0x32;
+const uint8_t ADDR_POSSX  = 0x33;
+const uint8_t ADDR_POSDX  = 0x34;
+const uint8_t ADDR_BALL   = 0x35;
+
+
 //==========================================================================
 
 // Costanti velocità motori
