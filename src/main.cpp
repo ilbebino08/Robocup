@@ -8,11 +8,13 @@
 #include <braccio.h>
 #include <debug.h>
 #include <lineLogic.h>
+#include <tofManager.h>
 
 BottomSensor IR_board;
 Motori motori;
 MultiClickButton button(BUTTON);
 Braccio braccio;
+tofManager tof_manager;
 
 long timer = 0;
 long lastNoLineaTime = 0;
@@ -45,6 +47,9 @@ void setup() {
 
     braccio.init();
     debug.println("Braccio inizializzato.");
+
+    tof_manager.init();
+    debug.println("ToF Manager inizializzato.");
 
     motori.init();
     debug.println("Motori inizializzati.");

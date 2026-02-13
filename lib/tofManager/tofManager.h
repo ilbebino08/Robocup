@@ -15,7 +15,7 @@ class tof{
         VL53L0X_RangingMeasurementData_t data; // Struttura per i dati del sensore
 
         bool setID(uint8_t newAddr);
-        void read();
+        void refresh();
 
 };
 
@@ -23,14 +23,15 @@ class tofManager {
     private:
         bool setID();
     public:
-        tof tof_Front;
-        tof tof_AntSX;
-        tof tof_AntDX;
-        tof tof_PosSX;
-        tof tof_PosDX;
-        tof tof_Ball;
+        tof front;
+        tof antSX;
+        tof antDX;
+        tof posSX;
+        tof posDX;
+        tof ball;
 
         bool init();
+        void refreshAll();
 
 };
 

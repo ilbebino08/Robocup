@@ -1,6 +1,6 @@
 #include "tofManager.h"
 
-void tof::read() {
+void tof::refresh() {
     sensor.rangingTest(&data);
 }
 
@@ -34,24 +34,24 @@ bool tofManager::setID() {
 
     dWrite(LOW);
 
-    tof_Front.xshutPin = XSHUT_FRONT;
-    tof_AntSX.xshutPin = XSHUT_SX_ANT;
-    tof_AntDX.xshutPin = XSHUT_DX_ANT;
-    tof_PosSX.xshutPin = XSHUT_SX_POS;
-    tof_PosDX.xshutPin = XSHUT_DX_POS;
-    tof_Ball.xshutPin = XSHUT_PALLINA;
-
-    if(!tof_Front.setID(ADDR_FRONT)) return false;
-    if(!tof_AntSX.setID(ADDR_ANTSX)) return false;
-    if(!tof_AntDX.setID(ADDR_ANTDX)) return false;
-    if(!tof_PosSX.setID(ADDR_POSSX)) return false;
-    if(!tof_PosDX.setID(ADDR_POSDX)) return false;
-    if(!tof_Ball.setID(ADDR_BALL)) return false;
+    if(!front.setID(ADDR_FRONT)) return false;
+    if(!antSX.setID(ADDR_ANTSX)) return false;
+    if(!antDX.setID(ADDR_ANTDX)) return false;
+    if(!posSX.setID(ADDR_POSSX)) return false;
+    if(!posDX.setID(ADDR_POSDX)) return false;
+    if(!ball.setID(ADDR_BALL))   return false;
     // Tutti i sensori dovrebbero ora rispondere a indirizzi diversi
     return true;
 }
 
 bool tofManager::init() {
+
+    front.xshutPin = XSHUT_FRONT;
+    antSX.xshutPin = XSHUT_SX_ANT;
+    antDX.xshutPin = XSHUT_DX_ANT;
+    posSX.xshutPin = XSHUT_SX_POS;
+    posDX.xshutPin = XSHUT_DX_POS;
+    ball.xshutPin = XSHUT_PALLINA;
 
     debug.println("Configurazione pin XSHUT sensori ToF...");
 
@@ -79,3 +79,11 @@ bool tofManager::init() {
     return true;
 }
 
+void tofManager::refreshAll(){
+    front.refresh();
+    antSX.refresh();
+    antDX.refresh();
+    posSX.refresh();
+    posDX.refresh();
+    ball.refresh();
+}

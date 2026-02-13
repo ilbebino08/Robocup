@@ -1,27 +1,32 @@
 #include "lineLogic.h"
+#include <tofManager.h>
 
 // Forward declarations
 void gestisciVerdeConLineaZero(int statoIniziale);
+void gestisciOstacolo();
 
 // Parametri configurabili per le manovre
-#define VELOCITA_STERZATA       1000     // Velocità durante la sterzata (-1023 a +1023)
-#define ANGOLO_STERZATA         1000     // Angolo durante la sterzata (-1750 a +1750)
-#define TEMPO_STERZATA          300      // Tempo di sterzata in millisecondi
-#define SOGLIA_SCOSTAMENTO      1500     // Soglia per rilevare scostamento linea
-#define TEMPO_VERIFICA          250      // Tempo di verifica prima della decisione
-#define CONTATORE_CONFERMA      3        // Numero di letture consecutive per conferma verde
-#define TIMEOUT_FALSO_VERDE     500      // Timeout per rilevare un falso verde
-#define TEMPO_IGNORA_VERDE      1000     // Tempo in ms per ignorare verdi dopo l'ultimo verde gestito
-#define VELOCITA_180            0        // Velocità durante la rotazione di 180 gradi (-1023 a +1023)
-#define ANGOLO_180              1750     // Angolo per rotazione sul posto (massimo)
-#define TEMPO_180               1000     // Tempo per completare la rotazione di 180 gradi
+#define VELOCITA_STERZATA       1000  // Velocità durante la sterzata (-1023 a +1023)
+#define ANGOLO_STERZATA         1000  // Angolo durante la sterzata (-1750 a +1750)
+#define TEMPO_STERZATA          300   // Tempo di sterzata in millisecondi
+#define SOGLIA_SCOSTAMENTO      1500  // Soglia per rilevare scostamento linea
+#define TEMPO_VERIFICA          250   // Tempo di verifica prima della decisione
+#define CONTATORE_CONFERMA      3     // Numero di letture consecutive per conferma verde
+#define TIMEOUT_FALSO_VERDE     500   // Timeout per rilevare un falso verde
+#define TEMPO_IGNORA_VERDE      1000  // Tempo in ms per ignorare verdi dopo l'ultimo verde gestito
+#define VELOCITA_180            0     // Velocità durante la rotazione di 180 gradi (-1023 a +1023)
+#define ANGOLO_180              1750  // Angolo per rotazione sul posto (massimo)
+#define TEMPO_180               1000  // Tempo per completare la rotazione di 180 gradi
 #define VELOCITA_AVANZA_CIECO   800   // Velocità durante l'avanzamento cieco dopo rotazione 180
 #define TEMPO_AVANZA_CIECO      500   // Tempo di avanzamento cieco in millisecondi
-#define VELOCITA_RALLENTA      400   // Velocità ridotta durante la conferma del verde
+#define VELOCITA_RALLENTA       400   // Velocità ridotta durante la conferma del verde
+#define SOGLIA_OSTACOLO         100   // Distanza in mm per rilevare ostacolo davanti
+#define VELOCITA_OSTACOLO       600   // Velocità durante l'evitamento dell'ostacolo
 // Riferimenti agli oggetti globali definiti in main.cpp
 extern Motori motori;
 extern BottomSensor IR_board;
 extern MultiClickButton button;
+extern tofManager tof_manager;
 
 // Struct per lo stato della gestione del verde
 struct StatoVerde {
@@ -96,6 +101,31 @@ struct StatoVerdeZero {
 
 static StatoVerdeZero statoVerdeZero;
 
+// Stato per la gestione dell'evitamento ostacoli
+struct StatoOstacolo {
+    enum Stato { 
+        S_NORMALE = 0, 
+        S_CENTRAMENTO = 1, 
+        S_STERZATA_FUORI = 2, 
+        S_AVANZA_FUORI = 3, 
+        S_STERZATA_DENTRO = 4, 
+        S_AVANZA_LATERALE = 5,
+        S_RICERCA_LINEA = 6,
+        S_RIENTRO = 7
+    };
+    Stato stato;
+    unsigned long tempoInizio;
+    
+    StatoOstacolo() : stato(S_NORMALE), tempoInizio(0) {}
+    
+    void reset() {
+        stato = S_NORMALE;
+        tempoInizio = 0;
+    }
+};
+
+static StatoOstacolo statoOstacolo;
+
 // Tempo dell'ultimo verde gestito
 static unsigned long ultimoTempoVerde = 0;
 
@@ -127,10 +157,21 @@ void initLineLogic() {
     statoDoppioVerde.reset();
     statoInterruzione.reset();
     statoVerdeZero.reset();
+    statoOstacolo.reset();
 }
 
 void gestisciLinea(int stato) {
-    // Leggi valori sensori
+    // Leggi il sensore frontale per ostacoli via accesso diretto
+    tof_manager.front.refresh();
+    int distanza = tof_manager.front.data.RangeMilliMeter;
+
+    // Se c'è un ostacolo o manovra in corso, ha la priorità assoluta
+    if ((distanza > 0 && distanza < SOGLIA_OSTACOLO) || statoOstacolo.stato != StatoOstacolo::S_NORMALE) {
+        gestisciOstacolo();
+        return;
+    }
+
+    // Leggi valori sensori IR
     int line_position = IR_board.line();
     bool verde_dx = IR_board.checkGreenDx();
     bool verde_sx = IR_board.checkGreenSx();
@@ -629,5 +670,105 @@ void gestisciNoLinea() {
         && statoInterruzione.stato != StatoInterruzione::S_VERIFICA
         && statoInterruzione.stato != StatoInterruzione::S_AVANZA_INTERRUZIONE) {
         statoInterruzione.reset();
+    }
+}
+
+void gestisciOstacolo() {
+    int line_pos = IR_board.line();
+    unsigned long tempoTrascorso = millis() - statoOstacolo.tempoInizio;
+
+    switch (statoOstacolo.stato) {
+        case StatoOstacolo::S_NORMALE:
+            debug.println("OSTACOLO RILEVATO: Inizio centramento");
+            motori.stop();
+            statoOstacolo.stato = StatoOstacolo::S_CENTRAMENTO;
+            statoOstacolo.tempoInizio = millis();
+            break;
+
+        case StatoOstacolo::S_CENTRAMENTO:
+            // Controllo errore corrente: se scostato, aggiustati sulla linea prima di partire
+            if (abs(line_pos) > 200) {
+                pidLineFollowing(300); // PID con vel bassa per centrare
+                if (tempoTrascorso > 1000) {
+                    debug.println("Timeout centramento: Inizio aggiramento comunque");
+                    motori.muovi(VELOCITA_OSTACOLO, 1750);
+                    statoOstacolo.stato = StatoOstacolo::S_STERZATA_FUORI;
+                    statoOstacolo.tempoInizio = millis();
+                }
+            } else {
+                debug.println("In asse: Inizio aggiramento");
+                motori.muovi(VELOCITA_OSTACOLO, 1750); // Sterza fuori linea (DX)
+                statoOstacolo.stato = StatoOstacolo::S_STERZATA_FUORI;
+                statoOstacolo.tempoInizio = millis();
+            }
+            break;
+
+        case StatoOstacolo::S_STERZATA_FUORI:
+            motori.muovi(VELOCITA_OSTACOLO, 1750); // Mantieni sterzata
+            if (tempoTrascorso >= 600) {
+                debug.println("Avanza fuori linea");
+                motori.muovi(VELOCITA_OSTACOLO, 0);
+                statoOstacolo.stato = StatoOstacolo::S_AVANZA_FUORI;
+                statoOstacolo.tempoInizio = millis();
+            }
+            break;
+
+        case StatoOstacolo::S_AVANZA_FUORI:
+            motori.muovi(VELOCITA_OSTACOLO, 0); // Mantieni avanzamento
+            if (tempoTrascorso >= 800) {
+                debug.println("Sterza parallelo");
+                motori.muovi(VELOCITA_OSTACOLO, -1750); // Sterza per mettersi parallelo
+                statoOstacolo.stato = StatoOstacolo::S_STERZATA_DENTRO;
+                statoOstacolo.tempoInizio = millis();
+            }
+            break;
+
+        case StatoOstacolo::S_STERZATA_DENTRO:
+            motori.muovi(VELOCITA_OSTACOLO, -1750); // Mantieni sterzata
+            if (tempoTrascorso >= 700) {
+                debug.println("Avanza laterale");
+                motori.muovi(VELOCITA_OSTACOLO, 0); // Avanza lateralmente all'ostacolo
+                statoOstacolo.stato = StatoOstacolo::S_AVANZA_LATERALE;
+                statoOstacolo.tempoInizio = millis();
+            }
+            break;
+
+        case StatoOstacolo::S_AVANZA_LATERALE:
+            motori.muovi(VELOCITA_OSTACOLO, 0); // Mantieni avanzamento
+            if (tempoTrascorso >= 1200) {
+                debug.println("Ricerca linea...");
+                motori.muovi(VELOCITA_OSTACOLO, -1200); // Sterza verso la linea (SX)
+                statoOstacolo.stato = StatoOstacolo::S_RICERCA_LINEA;
+                statoOstacolo.tempoInizio = millis();
+            }
+            break;
+
+        case StatoOstacolo::S_RICERCA_LINEA:
+            motori.muovi(VELOCITA_OSTACOLO, -1200); // Mantieni sterzata verso linea
+            // Quando non vede la linea, line() restituisce -1750 o 1750.
+            // Quando RIVEDE la linea, esce da quei valori estremi
+            if (line_pos > -1700 && line_pos < 1700) {
+                debug.print("Linea rivista a: ");
+                debug.println(line_pos);
+                debug.println("Correzione asse");
+                motori.muovi(VELOCITA_OSTACOLO, 1750); // Contro-sterzata per raddrizzare
+                statoOstacolo.stato = StatoOstacolo::S_RIENTRO;
+                statoOstacolo.tempoInizio = millis();
+            }
+            if (tempoTrascorso > 3000) {
+                debug.println("Timeout ricerca linea");
+                statoOstacolo.reset();
+                resetPID();
+            }
+            break;
+
+        case StatoOstacolo::S_RIENTRO:
+            // Fine manovra quando l'errore è minimo
+            if (abs(line_pos) < 500 || tempoTrascorso > 500) {
+                debug.println("Rientro completato");
+                statoOstacolo.reset();
+                resetPID();
+            }
+            break;
     }
 }
