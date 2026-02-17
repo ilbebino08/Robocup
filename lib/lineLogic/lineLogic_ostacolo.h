@@ -14,16 +14,25 @@ struct StatoOstacolo {
         S_STERZATA_DENTRO = 4, 
         S_AVANZA_LATERALE = 5,
         S_RICERCA_LINEA = 6,
-        S_RIENTRO = 7
+        S_VERIFICA_LINEA = 7,
+        S_RIENTRO = 8
     };
     uint8_t stato;
     uint16_t tempoInizio;
+    uint8_t latoCosteggiamento; // 0=destra, 1=sinistra
+    uint16_t minDistPericolo;   // Minima distanza rilevata sul lato opposto
+    uint8_t contatoreLetture;   // Contatore per lettura sensore opposto
+    uint8_t verificaStep;       // Step interno per verifica linea (avanti/indietro)
 
-    StatoOstacolo() : stato(0), tempoInizio(0) {}
+    StatoOstacolo() : stato(0), tempoInizio(0), latoCosteggiamento(0), minDistPericolo(2000), contatoreLetture(0), verificaStep(0) {}
 
     void reset() {
         stato = 0;
         tempoInizio = 0;
+        latoCosteggiamento = 0;
+        minDistPericolo = 2000;
+        contatoreLetture = 0;
+        verificaStep = 0;
     }
 };
 

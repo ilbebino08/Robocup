@@ -86,6 +86,25 @@ Quando la linea è perfettamente centrata (posizione 0):
 2. `S_FERMO`: Pausa per stabilizzazione
 3. `S_INDIETRO_VERIFICA`: Retromarcia lenta per identificare tipo verde
 
+### Macchina a Stati per Ostacolo
+
+Gestione completa dell'aggiramento ostacoli con sensori ToF (VL53L0X) e protezione pilastri:
+
+1. `S_NORMALE`: Rilevamento ostacolo frontale (soglia 50mm).
+2. `S_CENTRAMENTO`: Arretramento di 400ms per scansionare l'area circostante e allineamento PID alla linea.
+3. `S_STERZATA_FUORI`: Rotazione per uscire dalla linea. Scelta automatica del lato di costeggiamento (Destra o Sinistra) basata sullo spazio libero rilevato dai sensori posteriori.
+4. `S_AVANZA_FUORI`: Avanzamento per superare la sagoma frontale dell'ostacolo. Monitoraggio continuo del lato opposto per rilevare pilastri o pareti durante il sorpasso.
+5. `S_STERZATA_DENTRO`: Rotazione per mettersi parallelo all'ostacolo.
+6. `S_AVANZA_LATERALE`: Costeggiamento attivo a 50mm di distanza.
+   - **Costeggiamento Proporzionale**: Regolazione continua della sterzata per mantenere la distanza dal sensore laterale.
+   - **Sicurezza Opposta**: Lettura del sensore opposto ogni 10 cicli.
+   - **Logica Tunnel/Pilastro**: Se viene rilevato un ostacolo anche sul lato opposto, il robot smette di costeggiare e si auto-centra tra i due per non sbattere.
+7. `S_RICERCA_LINEA`: Rotazione verso il percorso con angolo di circa 50-60°. Ignora rilevazioni troppo precoci (<300ms) per evitare linee parallele false.
+8. `S_VERIFICA_LINEA`: Validazione della linea trovata tramite movimento "Avanti-Indietro":
+   - **Analisi Spaziale**: Verifica la larghezza della linea tramite gli 8 sensori IR singoli (scarta se < 2 o > 5 sensori attivi).
+   - **Filtro Angolare**: Scarta la linea se l'approccio è troppo piatto (segno di linea di un'altra parte del percorso).
+9. `S_RIENTRO`: Allineamento finale e ripresa del PID di linea normale.
+
 ## Feedback LED
 
 - **LED Verde**: Verde rilevato (SX/DX/DOPPIO)
