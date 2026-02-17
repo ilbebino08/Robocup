@@ -14,6 +14,8 @@ La scheda slave gestisce autonomamente:
 - Rilevamento colore linea (silver/black/red)
 - Rilevamento marcatori verdi (left/right)
 - Trasmissione dati via seriale
+- **Calibrazione autonoma**: Funzione di calibrazione sensori integrata
+- **Ottimizzazione RAM** (commit efab69f): Utilizzo di tipi `uint16_t` ridotti e buffer seriali ottimizzati
 
 ## Funzionalità Principali
 

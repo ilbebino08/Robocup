@@ -1,145 +1,39 @@
 #include "lineLogic.h"
 #include <tofManager.h>
-
-// Forward declarations
-void gestisciVerdeConLineaZero(int statoIniziale);
-void gestisciOstacolo();
+#include "lineLogic_verde.h"
+#include "lineLogic_interruzione.h"
+#include "lineLogic_ostacolo.h"
 
 // Parametri configurabili per le manovre
-#define VELOCITA_STERZATA       1000  // Velocità durante la sterzata (-1023 a +1023)
-#define ANGOLO_STERZATA         1000  // Angolo durante la sterzata (-1750 a +1750)
-#define TEMPO_STERZATA          300   // Tempo di sterzata in millisecondi
-#define SOGLIA_SCOSTAMENTO      1500  // Soglia per rilevare scostamento linea
-#define TEMPO_VERIFICA          250   // Tempo di verifica prima della decisione
-#define CONTATORE_CONFERMA      3     // Numero di letture consecutive per conferma verde
-#define TIMEOUT_FALSO_VERDE     500   // Timeout per rilevare un falso verde
-#define TEMPO_IGNORA_VERDE      2000  // Tempo in ms per ignorare verdi singoli dopo l'ultimo verde gestito
-#define TEMPO_IGNORA_DOPPIO_VERDE 500 // Tempo in ms per ignorare doppio verde dopo l'ultimo doppio verde
-#define VELOCITA_180            0     // Velocità durante la rotazione di 180 gradi (-1023 a +1023)
-#define ANGOLO_180              1750  // Angolo per rotazione sul posto (massimo)
-#define TEMPO_180               2000  // Tempo per completare la rotazione di 180 gradi
-#define VELOCITA_AVANZA_CIECO   800   // Velocità durante l'avanzamento cieco dopo rotazione 180
-#define TEMPO_AVANZA_CIECO      1000  // Tempo di avanzamento cieco in millisecondi
-#define VELOCITA_RALLENTA       400   // Velocità ridotta durante la conferma del verde
-#define VELOCITA_VERIFICA       300   // Velocità durante la verifica del verde
-#define TEMPO_VERIFICA_AVANTI   200   // Tempo in ms per avanzare durante verifica
-#define TEMPO_VERIFICA_INDIETRO 200   // Tempo in ms per indietreggiare durante verifica
-#define SOGLIA_OSTACOLO         100   // Distanza in mm per rilevare ostacolo davanti
-#define VELOCITA_OSTACOLO       600   // Velocità durante l'evitamento dell'ostacolo
+#define VELOCITA_STERZATA       1000
+#define ANGOLO_STERZATA         1000
+#define TEMPO_STERZATA          300
+#define SOGLIA_SCOSTAMENTO      1500
+#define TEMPO_VERIFICA          250
+#define CONTATORE_CONFERMA      3
+#define TIMEOUT_FALSO_VERDE     500
+#define TEMPO_IGNORA_VERDE      2000
+#define TEMPO_IGNORA_DOPPIO_VERDE 500
+#define VELOCITA_180            0
+#define ANGOLO_180              1750
+#define TEMPO_180               2000
+#define VELOCITA_AVANZA_CIECO   800
+#define TEMPO_AVANZA_CIECO      1000
+#define VELOCITA_RALLENTA       400
+#define VELOCITA_VERIFICA       300
+#define TEMPO_VERIFICA_AVANTI   200
+#define TEMPO_VERIFICA_INDIETRO 200
+#define SOGLIA_OSTACOLO         100
+#define VELOCITA_OSTACOLO       600
+
 // Riferimenti agli oggetti globali definiti in main.cpp
 extern Motori motori;
 extern BottomSensor IR_board;
 extern MultiClickButton button;
 extern tofManager tof_manager;
 
-// Struct per lo stato della gestione del verde
-struct StatoVerde {
-    enum Stato { S_NORMALE = 0, S_RILEVATO = 1, S_VERIFICA_AVANTI = 2, S_VERIFICA_INDIETRO = 3, S_IN_MANOVRA = 4, S_AVANZA_DOPO = 5 };
-    uint8_t stato;
-    uint16_t tempoRilevazione;
-    uint8_t contatoreConsecutivo;
-    uint16_t tempoAvanzamento;
-    int16_t lineaIniziale;
-    bool doppioVerdeRilevato;
-
-    StatoVerde() : stato(0), tempoRilevazione(0), contatoreConsecutivo(0), tempoAvanzamento(0), lineaIniziale(0), doppioVerdeRilevato(false) {}
-
-    void reset() {
-        stato = 0;
-        tempoRilevazione = 0;
-        contatoreConsecutivo = 0;
-        tempoAvanzamento = 0;
-        lineaIniziale = 0;
-        doppioVerdeRilevato = false;
-    }
-};
-
-static StatoVerde statoVerdeDx;
-static StatoVerde statoVerdeSx;
-
-// Stato per la gestione del doppio verde (rotazione 180)
-struct StatoDoppioVerde {
-    enum Stato { S_NORMALE = 0, S_RILEVATO = 1, S_IN_ROTAZIONE = 2, S_AVANZA_CIECO = 3 };
-    uint8_t stato;
-    uint16_t tempoInizio;  // Ridotto da unsigned long
-    uint8_t contatoreConsecutivo;  // Ridotto da int
-
-    StatoDoppioVerde() : stato(0), tempoInizio(0), contatoreConsecutivo(0) {}
-
-    void reset() {
-        stato = 0;
-        tempoInizio = 0;
-        contatoreConsecutivo = 0;
-    }
-};
-
-static StatoDoppioVerde statoDoppioVerde;
-
-// Stato per la gestione dell'interruzione di linea
-struct StatoInterruzione {
-    enum Stato { S_NORMALE = 0, S_FERMATO = 1, S_AVANTI_COLORE = 2, S_INDIETRO_COLORE = 3, S_CERCA_LINEA = 4, S_VERIFICA = 5, S_AVANZA_INTERRUZIONE = 6 };
-    uint8_t stato;
-    uint16_t tempoInizio;  // Ridotto da unsigned long
-
-    StatoInterruzione() : stato(0), tempoInizio(0) {}
-
-    void reset() {
-        stato = 0;
-        tempoInizio = 0;
-    }
-};
-
-static StatoInterruzione statoInterruzione;
-
-// Stato per la gestione del verde con linea a 0
-struct StatoVerdeZero {
-    enum Stato { S_NORMALE = 0, S_FERMO = 1, S_INDIETRO_VERIFICA = 2 };
-    uint8_t stato;
-    uint16_t tempoInizio;  // Ridotto da unsigned long
-
-    StatoVerdeZero() : stato(0), tempoInizio(0) {}
-
-    void reset() {
-        stato = 0;
-        tempoInizio = 0;
-    }
-};
-
-static StatoVerdeZero statoVerdeZero;
-
-// Stato per la gestione dell'evitamento ostacoli
-struct StatoOstacolo {
-    enum Stato { 
-        S_NORMALE = 0, 
-        S_CENTRAMENTO = 1, 
-        S_STERZATA_FUORI = 2, 
-        S_AVANZA_FUORI = 3, 
-        S_STERZATA_DENTRO = 4, 
-        S_AVANZA_LATERALE = 5,
-        S_RICERCA_LINEA = 6,
-        S_RIENTRO = 7
-    };
-    uint8_t stato;
-    uint16_t tempoInizio;  // Ridotto da unsigned long
-
-    StatoOstacolo() : stato(0), tempoInizio(0) {}
-
-    void reset() {
-        stato = 0;
-        tempoInizio = 0;
-    }
-};
-
-static StatoOstacolo statoOstacolo;
-
-// Tempo dell'ultimo verde gestito - uint16_t invece di unsigned long
-static uint16_t ultimoTempoVerde = 0;
-static uint16_t ultimoTempoDoppioVerde = 0;
-
 /**
  * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
- * 
- * @return int -> Stato della linea (LINEA, NO_LINEA, COL_RILEVATO, VERDE_SX, VERDE_DX, DOPPIO_VERDE).
  */
 int statoLinea(){
     // Prima controlla colori speciali
@@ -168,7 +62,7 @@ void initLineLogic() {
 }
 
 void gestisciLinea(int stato) {
-    // Leggi il sensore frontale per ostacoli via accesso diretto
+    // Leggi il sensore frontale per ostacoli
     tof_manager.front.refresh();
     int distanza = tof_manager.front.distance;
 
@@ -182,7 +76,6 @@ void gestisciLinea(int stato) {
     int line_position = IR_board.line();
     bool verde_dx = IR_board.checkGreenDx();
     bool verde_sx = IR_board.checkGreenSx();
-    // bool doppio_verde = (verde_dx && verde_sx);  // Non più usato dopo ottimizzazione debug
     
     // Flag per sensori verdi con debug RAW
     static bool flag_verde_dx = false;
@@ -221,7 +114,7 @@ void gestisciLinea(int stato) {
         digitalWrite(LED_G, LOW);
     }
 
-    // TODO: test PRIORITÀ ASSOLUTA: Manovre già in corso devono essere completate
+    // PRIORITÀ ASSOLUTA: Manovre già in corso devono essere completate
     if (statoDoppioVerde.stato == StatoDoppioVerde::S_IN_ROTAZIONE || 
         statoDoppioVerde.stato == StatoDoppioVerde::S_AVANZA_CIECO) {
         gestisciDoppioVerde();
@@ -245,8 +138,6 @@ void gestisciLinea(int stato) {
     }
     
     // PRIORITÀ MASSIMA: Doppio verde ha precedenza su tutto
-    // Se rileviamo doppio verde mentre siamo in gestione di verde singolo, cancelliamo lo stato singolo
-    // MA ignoriamo nuovi doppi verdi durante la rotazione o avanzamento cieco
     if (stato == DOPPIO_VERDE && 
         statoDoppioVerde.stato != StatoDoppioVerde::S_IN_ROTAZIONE && 
         statoDoppioVerde.stato != StatoDoppioVerde::S_AVANZA_CIECO) {
@@ -276,10 +167,8 @@ void gestisciLinea(int stato) {
             if (statoVerdeDx.stato == StatoVerde::S_RILEVATO || 
                 statoVerdeSx.stato == StatoVerde::S_RILEVATO || 
                 statoDoppioVerde.stato == StatoDoppioVerde::S_RILEVATO) {
-                // debug.println("Seguendo la linea RALLENTATA (conferma verde).");  // Commentato
                 pidLineFollowing(VELOCITA_RALLENTA);
             } else {
-                // debug.println("Seguendo la linea.");  // Commentato
                 if (statoVerdeDx.stato != StatoVerde::S_NORMALE && statoVerdeDx.stato != StatoVerde::S_IN_MANOVRA) 
                     statoVerdeDx.reset();
                 if (statoVerdeSx.stato != StatoVerde::S_NORMALE && statoVerdeSx.stato != StatoVerde::S_IN_MANOVRA) 
@@ -294,7 +183,6 @@ void gestisciLinea(int stato) {
             break;
 
         case DOPPIO_VERDE:
-            // Questo caso ora è gestito sopra, ma lo lasciamo per sicurezza
             gestisciDoppioVerde();
             break;
 
@@ -311,534 +199,6 @@ void gestisciLinea(int stato) {
             break;
 
         default:
-            break;
-    }
-}
-
-void gestisciDoppioVerde() {
-    switch (statoDoppioVerde.stato) {
-        case StatoDoppioVerde::S_NORMALE:
-            // Ignora il doppio verde se è passato meno di TEMPO_IGNORA_DOPPIO_VERDE dall'ultimo doppio verde gestito
-            if (millis() - ultimoTempoDoppioVerde < TEMPO_IGNORA_DOPPIO_VERDE) {
-                debug.println("Doppio verde ignorato: troppo vicino all'ultimo");
-                return;
-            }
-            
-            debug.println("Doppio verde rilevato: mi fermo.");
-            motori.stop();
-            statoDoppioVerde.stato = StatoDoppioVerde::S_RILEVATO;
-            statoDoppioVerde.tempoInizio = millis();
-            statoDoppioVerde.contatoreConsecutivo = 0;
-            break;
-            
-        case StatoDoppioVerde::S_RILEVATO:
-            // FERMO: resta fermo mentre verifica il doppio verde
-            motori.stop();
-            
-            if (statoLinea() == DOPPIO_VERDE) {
-                statoDoppioVerde.contatoreConsecutivo++;
-                debug.print("Contatore doppio verde: ");
-                debug.println(statoDoppioVerde.contatoreConsecutivo);
-                
-                if (statoDoppioVerde.contatoreConsecutivo >= CONTATORE_CONFERMA) {
-                    debug.println("Doppio verde confermato: eseguo rotazione 180 gradi.");
-                    resetPID();
-                    motori.muovi(VELOCITA_180, ANGOLO_180);
-                    statoDoppioVerde.stato = StatoDoppioVerde::S_IN_ROTAZIONE;
-                    statoDoppioVerde.tempoInizio = millis();
-                }
-            } else {
-                // Doppio verde non più presente
-                unsigned long tempoTrascorso = millis() - statoDoppioVerde.tempoInizio;
-                debug.print("Doppio verde perso, tempo trascorso: ");
-                debug.println((int)tempoTrascorso);
-                
-                if (tempoTrascorso > TIMEOUT_FALSO_VERDE) {
-                    debug.println("Falso doppio verde: ripristino normale.");
-                    statoDoppioVerde.reset();
-                }
-            }
-            break;
-            
-        case StatoDoppioVerde::S_IN_ROTAZIONE:
-            {
-                // Continua la rotazione
-                motori.muovi(VELOCITA_180, ANGOLO_180);
-                unsigned long tempoRotazione = millis() - statoDoppioVerde.tempoInizio;
-                
-                if (tempoRotazione >= TEMPO_180) {
-                    debug.print("Rotazione 180 completata dopo ");
-                    debug.print((int)tempoRotazione);
-                    debug.println("ms: avanzamento cieco.");
-                    ultimoTempoDoppioVerde = millis();  // Aggiorna il tempo dell'ultimo doppio verde gestito
-                    statoDoppioVerde.stato = StatoDoppioVerde::S_AVANZA_CIECO;
-                    statoDoppioVerde.tempoInizio = millis();
-                    resetPID();
-                }
-            }
-            break;
-            
-        case StatoDoppioVerde::S_AVANZA_CIECO:
-            {
-                // Avanza dritto alla cieca per un tempo definito
-                motori.muovi(VELOCITA_AVANZA_CIECO, 0);  // Angolo 0 = dritto
-                unsigned long tempoAvanzamento = millis() - statoDoppioVerde.tempoInizio;
-                
-                if (tempoAvanzamento >= TEMPO_AVANZA_CIECO) {
-                    debug.println("Avanzamento cieco completato: ripristino normale.");
-                    statoDoppioVerde.reset();
-                    resetPID();
-                }
-            }
-            break;
-    }
-}
-
-/**
- * @brief Gestisce il verde in modo generico (sia destra che sinistra)
- * @param stato Riferimento allo stato verde (dx o sx)
- * @param statoCorrente Stato della linea attuale (VERDE_DX o VERDE_SX)
- * @param velocita Velocità durante la sterzata (-1023 a +1023)
- * @param angolo Angolo durante la sterzata (-1750 a +1750)
- * @param nomeDir Nome della direzione per i messaggi di debug
- */
-void gestisciVerdeGenerico(StatoVerde& stato, int statoCorrente, int velocita, int angolo, const char* nomeDir) {
-    switch (stato.stato) {
-        case StatoVerde::S_NORMALE:
-            // Ignora il verde se è passato meno di TEMPO_IGNORA_VERDE dall'ultimo verde gestito
-            if (millis() - ultimoTempoVerde < TEMPO_IGNORA_VERDE) {
-                debug.println("Verde ignorato: troppo vicino all'ultimo");
-                return;
-            }
-            
-            debug.print("Verde ");
-            debug.print(nomeDir);
-            debug.println(" rilevato: inizio verifica.");
-            motori.stop();
-            stato.stato = StatoVerde::S_RILEVATO;
-            stato.tempoRilevazione = millis();
-            stato.contatoreConsecutivo = 0;
-            stato.doppioVerdeRilevato = false;
-            stato.lineaIniziale = IR_board.line();
-            break;
-
-        case StatoVerde::S_RILEVATO:
-            // Conta conferme rimanendo fermo
-            motori.stop();
-            
-            // Controlla se è doppio verde
-            if (statoLinea() == DOPPIO_VERDE) {
-                stato.doppioVerdeRilevato = true;
-                debug.println("DOPPIO VERDE rilevato durante conferma!");
-            }
-            
-            if (statoLinea() == statoCorrente || stato.doppioVerdeRilevato) {
-                stato.contatoreConsecutivo++;
-                debug.print("Contatore verde: ");
-                debug.println(stato.contatoreConsecutivo);
-                
-                if (stato.contatoreConsecutivo >= CONTATORE_CONFERMA) {
-                    debug.println("Verde confermato: inizio verifica avanti-indietro.");
-                    stato.stato = StatoVerde::S_VERIFICA_AVANTI;
-                    stato.tempoAvanzamento = millis();
-                }
-            } else {
-                // Verde non più presente
-                unsigned long tempoTrascorso = millis() - stato.tempoRilevazione;
-                debug.print("Verde perso, tempo trascorso: ");
-                debug.println((int)tempoTrascorso);
-                
-                if (tempoTrascorso > TIMEOUT_FALSO_VERDE) {
-                    debug.println("Falso verde: ripristino normale.");
-                    stato.reset();
-                }
-            }
-            break;
-
-        case StatoVerde::S_VERIFICA_AVANTI:
-            // Avanza leggermente controllando se è doppio verde
-            motori.muovi(VELOCITA_VERIFICA, 0);
-            
-            // Controlla se è doppio verde
-            if (statoLinea() == DOPPIO_VERDE) {
-                stato.doppioVerdeRilevato = true;
-                debug.println("DOPPIO VERDE rilevato durante verifica avanti!");
-            }
-            
-            if (millis() - stato.tempoAvanzamento >= TEMPO_VERIFICA_AVANTI) {
-                debug.println("Verifica avanti completata: indietreggio.");
-                stato.stato = StatoVerde::S_VERIFICA_INDIETRO;
-                stato.tempoAvanzamento = millis();
-            }
-            break;
-
-        case StatoVerde::S_VERIFICA_INDIETRO:
-            // Indietreggia leggermente controllando se è doppio verde
-            motori.muovi(-VELOCITA_VERIFICA, 0);
-            
-            // Controlla se è doppio verde
-            if (statoLinea() == DOPPIO_VERDE) {
-                stato.doppioVerdeRilevato = true;
-                debug.println("DOPPIO VERDE rilevato durante verifica indietro!");
-            }
-            
-            if (millis() - stato.tempoAvanzamento >= TEMPO_VERIFICA_INDIETRO) {
-                debug.println("Verifica indietro completata.");
-                motori.stop();
-                
-                // Decidi azione in base a cosa è stato rilevato
-                if (stato.doppioVerdeRilevato) {
-                    debug.println("Doppio verde confermato: passo al gestore doppio verde.");
-                    // Resetta questo stato e attiva il doppio verde
-                    stato.reset();
-                    statoDoppioVerde.stato = StatoDoppioVerde::S_RILEVATO;
-                    statoDoppioVerde.tempoInizio = millis();
-                    statoDoppioVerde.contatoreConsecutivo = 0;
-                } else {
-                    debug.print("Verde ");
-                    debug.print(nomeDir);
-                    debug.println(" singolo: eseguo manovra.");
-                    resetPID();
-                    motori.muovi(velocita, angolo);
-                    stato.stato = StatoVerde::S_IN_MANOVRA;
-                    stato.tempoAvanzamento = millis();
-                }
-            }
-            break;
-
-        case StatoVerde::S_IN_MANOVRA:
-            {
-                // Continuo la manovra per il tempo stabilito
-                motori.muovi(velocita, angolo);
-                unsigned long tempoManovra = millis() - stato.tempoAvanzamento;
-                
-                if (tempoManovra >= TEMPO_STERZATA) {
-                    debug.print("Manovra completata dopo ");
-                    debug.print((int)tempoManovra);
-                    debug.println("ms: ripristino normale.");
-                    ultimoTempoVerde = millis();  // Aggiorna il tempo dell'ultimo verde gestito
-                    stato.reset();
-                    resetPID();
-                }
-            }
-            break;
-
-        case StatoVerde::S_AVANZA_DOPO:
-            pidLineFollowing(DEFAULT_VELOCITY);
-            // Se non vedo più verde o è passato abbastanza tempo, torno normale
-            if (statoLinea() != statoCorrente || millis() - stato.tempoAvanzamento > 500) {
-                debug.println("Verde post-curva superato: ripristino normale.");
-                stato.reset();
-            }
-            break;
-    }
-}
-
-void gestisciVerdeSinistra() {
-    gestisciVerdeGenerico(statoVerdeSx, VERDE_SX, VELOCITA_STERZATA, -ANGOLO_STERZATA, "sinistra");
-}
-
-void gestisciVerdeDestra() {
-    gestisciVerdeGenerico(statoVerdeDx, VERDE_DX, VELOCITA_STERZATA, ANGOLO_STERZATA, "destra");
-}
-
-void gestisciVerdeConLineaZero(int statoIniziale) {
-    switch (statoVerdeZero.stato) {
-        case StatoVerdeZero::S_NORMALE:
-            debug.println("Linea a 0 rilevata: fermo per verificare tipo verde");
-            motori.stop();
-            statoVerdeZero.stato = StatoVerdeZero::S_FERMO;
-            statoVerdeZero.tempoInizio = millis();
-            break;
-            
-        case StatoVerdeZero::S_FERMO:
-            // Attesa breve
-            if (millis() - statoVerdeZero.tempoInizio >= 200) {
-                debug.println("Vado indietro lentamente per verificare tipo verde");
-                statoVerdeZero.stato = StatoVerdeZero::S_INDIETRO_VERIFICA;
-                statoVerdeZero.tempoInizio = millis();
-            }
-            break;
-            
-        case StatoVerdeZero::S_INDIETRO_VERIFICA:
-            // Va indietro lentamente mentre verifica lo stato
-            motori.muovi(-300, 0);
-            
-            int statoCorrente = statoLinea();
-            int line_pos = IR_board.line();
-            
-            // Verifica il tipo di verde rilevato
-            if (statoCorrente == DOPPIO_VERDE) {
-                debug.println("Confermato DOPPIO VERDE - eseguo manovra diretta");
-                statoVerdeZero.reset();
-                resetPID();
-                // Forza direttamente lo stato IN_ROTAZIONE
-                statoDoppioVerde.stato = StatoDoppioVerde::S_IN_ROTAZIONE;
-                statoDoppioVerde.tempoInizio = millis();
-                motori.muovi(VELOCITA_180, ANGOLO_180);
-            } else if (statoCorrente == VERDE_SX) {
-                debug.println("Confermato VERDE SINISTRA - eseguo manovra diretta");
-                statoVerdeZero.reset();
-                resetPID();
-                // Forza direttamente lo stato IN_MANOVRA
-                statoVerdeSx.stato = StatoVerde::S_IN_MANOVRA;
-                statoVerdeSx.tempoAvanzamento = millis();
-                motori.muovi(VELOCITA_STERZATA, -ANGOLO_STERZATA);
-            } else if (statoCorrente == VERDE_DX) {
-                debug.println("Confermato VERDE DESTRA - eseguo manovra diretta");
-                statoVerdeZero.reset();
-                resetPID();
-                // Forza direttamente lo stato IN_MANOVRA
-                statoVerdeDx.stato = StatoVerde::S_IN_MANOVRA;
-                statoVerdeDx.tempoAvanzamento = millis();
-                motori.muovi(VELOCITA_STERZATA, ANGOLO_STERZATA);
-            } else if (line_pos != 0 || millis() - statoVerdeZero.tempoInizio >= 500) {
-                // La linea non è più a 0 o timeout: era solo linea dritta
-                debug.println("Era solo linea dritta, riprendo inseguimento");
-                statoVerdeZero.reset();
-            }
-            break;
-    }
-}
-
-void gestisciNoLinea() {
-    switch (statoInterruzione.stato) {
-        case StatoInterruzione::S_NORMALE:
-            // Prima volta che si rileva NO_LINEA: ferma e inizia la procedura
-            debug.println("Linea persa: inizio procedura verifica");
-            motori.stop();
-            statoInterruzione.stato = StatoInterruzione::S_FERMATO;
-            statoInterruzione.tempoInizio = millis();
-            break;
-            
-        case StatoInterruzione::S_FERMATO:
-            // Attesa breve dopo il fermo
-            if (millis() - statoInterruzione.tempoInizio >= 300) {
-                debug.println("Cerco colore avanti");
-                statoInterruzione.stato = StatoInterruzione::S_AVANTI_COLORE;
-                statoInterruzione.tempoInizio = millis();
-                IR_board.setCheckColor(3);
-            }
-            break;
-            
-        case StatoInterruzione::S_AVANTI_COLORE:
-            // Avanza per 500ms cercando un colore speciale
-            if (IR_board.checkColor()) {
-                debug.println("Colore rilevato!");
-                motori.stop();
-                statoInterruzione.reset();
-                // Qui potrebbe essere necessario cambiare stato globale
-            } else if (millis() - statoInterruzione.tempoInizio >= 500) {
-                debug.println("Cerco colore indietro");
-                statoInterruzione.stato = StatoInterruzione::S_INDIETRO_COLORE;
-                statoInterruzione.tempoInizio = millis();
-            } else {
-                motori.muovi(400, 0);  // Avanza
-            }
-            break;
-            
-        case StatoInterruzione::S_INDIETRO_COLORE:
-            // Torna indietro per 500ms cercando un colore speciale
-            if (IR_board.checkColor()) {
-                debug.println("Colore rilevato!");
-                motori.stop();
-                statoInterruzione.reset();
-            } else if (millis() - statoInterruzione.tempoInizio >= 500) {
-                debug.println("Torno indietro a cercare la linea");
-                statoInterruzione.stato = StatoInterruzione::S_CERCA_LINEA;
-            } else {
-                motori.muovi(-400, 0);  // Indietro
-            }
-            break;
-            
-        case StatoInterruzione::S_CERCA_LINEA:
-            // Continua indietro fino a ritrovare la linea
-            if (statoLinea() == LINEA) {
-                int line_pos = IR_board.line();
-                // Se la linea è nel range centrale, è probabilmente un'interruzione
-                if (line_pos >= -500 && line_pos <= 500) {
-                    debug.println("Linea in range centrale: interruzione confermata");
-                    motori.stop();
-                    statoInterruzione.stato = StatoInterruzione::S_AVANZA_INTERRUZIONE;
-                } else {
-                    debug.println("Linea ritrovata, continuo indietro");
-                    statoInterruzione.stato = StatoInterruzione::S_VERIFICA;
-                    statoInterruzione.tempoInizio = millis();
-                }
-            } else {
-                motori.muovi(-400, 0);  // Continua indietro
-            }
-            break;
-            
-        case StatoInterruzione::S_VERIFICA:
-            // Continua indietro per altri 400ms dopo aver ritrovato la linea
-            if (millis() - statoInterruzione.tempoInizio >= 400) {
-                motori.stop();
-                
-                // Verifica se è un'interruzione o una rotatoria
-                if (IR_board.checkLinea()) {
-                    int line_pos = IR_board.line();
-                    if (line_pos >= -500 && line_pos <= 500) {
-                        debug.println("Interruzione confermata: inizio avanzamento");
-                        statoInterruzione.stato = StatoInterruzione::S_AVANZA_INTERRUZIONE;
-                    } else {
-                        debug.println("Linea fuori range: ripristino");
-                        statoInterruzione.reset();
-                        resetPID();
-                    }
-                } else {
-                    // Non è un'interruzione: la linea è stata persa
-                    // Determina la direzione dell'errore e correggi con velocità maggiore
-                    int line_position = IR_board.line();
-                    
-                    if (line_position <= -1690) {
-                        // Errore a sinistra: ruota a sinistra
-                        debug.println("Rotatoria/fuori percorso: correzione ampia a SINISTRA");
-                        motori.muovi(600, -1750);  // Sterzata ampia a sinistra con velocità maggiore
-                    } else if (line_position >= 1690) {
-                        // Errore a destra: ruota a destra
-                        debug.println("Rotatoria/fuori percorso: correzione ampia a DESTRA");
-                        motori.muovi(600, 1750);  // Sterzata ampia a destra con velocità maggiore
-                    } else {
-                        debug.println("Rotatoria o fuori percorso: ripristino");
-                    }
-                    
-                    statoInterruzione.reset();
-                    resetPID();
-                }
-            } else {
-                motori.muovi(-400, 0);  // Continua indietro
-            }
-            break;
-            
-        case StatoInterruzione::S_AVANZA_INTERRUZIONE:
-            // Avanza fino a quando la linea non ricompare sotto i sensori laterali
-            // Controlla anche se ci sono verdi durante l'avanzamento
-            if (IR_board.checkGreenDx() || IR_board.checkGreenSx()) {
-                debug.println("Verde rilevato durante interruzione: ripristino per gestione verde");
-                statoInterruzione.reset();
-                resetPID();
-                break;
-            }
-            
-            int line_position = IR_board.line();
-            
-            // Se la linea non è più ai limiti, l'abbiamo ritrovata
-            if (line_position != -1750 && line_position != 1750) {
-                debug.println("Linea ritrovata dopo interruzione: ripristino normale");
-                statoInterruzione.reset();
-                resetPID();
-            } else {
-                // Continua ad avanzare
-                motori.muovi(500, 0);
-            }
-            break;
-    }
-    
-    // Se siamo tornati in LINEA durante la gestione, resetta lo stato (tranne durante avanzamento interruzione)
-    if (statoLinea() == LINEA && statoInterruzione.stato != StatoInterruzione::S_CERCA_LINEA 
-        && statoInterruzione.stato != StatoInterruzione::S_VERIFICA
-        && statoInterruzione.stato != StatoInterruzione::S_AVANZA_INTERRUZIONE) {
-        statoInterruzione.reset();
-    }
-}
-
-void gestisciOstacolo() {
-    int line_pos = IR_board.line();
-    unsigned long tempoTrascorso = millis() - statoOstacolo.tempoInizio;
-
-    switch (statoOstacolo.stato) {
-        case StatoOstacolo::S_NORMALE:
-            debug.println("OSTACOLO RILEVATO: Inizio centramento");
-            motori.stop();
-            statoOstacolo.stato = StatoOstacolo::S_CENTRAMENTO;
-            statoOstacolo.tempoInizio = millis();
-            break;
-
-        case StatoOstacolo::S_CENTRAMENTO:
-            // Controllo errore corrente: se scostato, aggiustati sulla linea prima di partire
-            if (abs(line_pos) > 200) {
-                pidLineFollowing(300); // PID con vel bassa per centrare
-                if (tempoTrascorso > 1000) {
-                    debug.println("Timeout centramento: Inizio aggiramento comunque");
-                    motori.muovi(VELOCITA_OSTACOLO, 1750);
-                    statoOstacolo.stato = StatoOstacolo::S_STERZATA_FUORI;
-                    statoOstacolo.tempoInizio = millis();
-                }
-            } else {
-                debug.println("In asse: Inizio aggiramento");
-                motori.muovi(VELOCITA_OSTACOLO, 1750); // Sterza fuori linea (DX)
-                statoOstacolo.stato = StatoOstacolo::S_STERZATA_FUORI;
-                statoOstacolo.tempoInizio = millis();
-            }
-            break;
-
-        case StatoOstacolo::S_STERZATA_FUORI:
-            motori.muovi(VELOCITA_OSTACOLO, 1750); // Mantieni sterzata
-            if (tempoTrascorso >= 600) {
-                debug.println("Avanza fuori linea");
-                motori.muovi(VELOCITA_OSTACOLO, 0);
-                statoOstacolo.stato = StatoOstacolo::S_AVANZA_FUORI;
-                statoOstacolo.tempoInizio = millis();
-            }
-            break;
-
-        case StatoOstacolo::S_AVANZA_FUORI:
-            motori.muovi(VELOCITA_OSTACOLO, 0); // Mantieni avanzamento
-            if (tempoTrascorso >= 800) {
-                debug.println("Sterza parallelo");
-                motori.muovi(VELOCITA_OSTACOLO, -1750); // Sterza per mettersi parallelo
-                statoOstacolo.stato = StatoOstacolo::S_STERZATA_DENTRO;
-                statoOstacolo.tempoInizio = millis();
-            }
-            break;
-
-        case StatoOstacolo::S_STERZATA_DENTRO:
-            motori.muovi(VELOCITA_OSTACOLO, -1750); // Mantieni sterzata
-            if (tempoTrascorso >= 700) {
-                debug.println("Avanza laterale");
-                motori.muovi(VELOCITA_OSTACOLO, 0); // Avanza lateralmente all'ostacolo
-                statoOstacolo.stato = StatoOstacolo::S_AVANZA_LATERALE;
-                statoOstacolo.tempoInizio = millis();
-            }
-            break;
-
-        case StatoOstacolo::S_AVANZA_LATERALE:
-            motori.muovi(VELOCITA_OSTACOLO, 0); // Mantieni avanzamento
-            if (tempoTrascorso >= 1200) {
-                debug.println("Ricerca linea...");
-                motori.muovi(VELOCITA_OSTACOLO, -1200); // Sterza verso la linea (SX)
-                statoOstacolo.stato = StatoOstacolo::S_RICERCA_LINEA;
-                statoOstacolo.tempoInizio = millis();
-            }
-            break;
-
-        case StatoOstacolo::S_RICERCA_LINEA:
-            motori.muovi(VELOCITA_OSTACOLO, -1200); // Mantieni sterzata verso linea
-            // Quando non vede la linea, line() restituisce -1750 o 1750.
-            // Quando RIVEDE la linea, esce da quei valori estremi
-            if (line_pos > -1700 && line_pos < 1700) {
-                debug.print("Linea rivista a: ");
-                debug.println(line_pos);
-                debug.println("Correzione asse");
-                motori.muovi(VELOCITA_OSTACOLO, 1750); // Contro-sterzata per raddrizzare
-                statoOstacolo.stato = StatoOstacolo::S_RIENTRO;
-                statoOstacolo.tempoInizio = millis();
-            }
-            if (tempoTrascorso > 3000) {
-                debug.println("Timeout ricerca linea");
-                statoOstacolo.reset();
-                resetPID();
-            }
-            break;
-
-        case StatoOstacolo::S_RIENTRO:
-            // Fine manovra quando l'errore è minimo
-            if (abs(line_pos) < 500 || tempoTrascorso > 500) {
-                debug.println("Rientro completato");
-                statoOstacolo.reset();
-                resetPID();
-            }
             break;
     }
 }

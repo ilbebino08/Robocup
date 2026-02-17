@@ -7,7 +7,10 @@ Libreria per la gestione flessibile del debug con supporto per multipli output s
 - **Output multipli**: USB Serial, Bluetooth, SD Card
 - **Configurazione flessibile**: Abilita/disabilita output dinamicamente
 - **API semplice**: Simile a Serial (print, println, printf)
-- **Non bloccante**: Se un output non è disponibile, continua con gli altri
+- **Non bloccante**: Se un output non è disponibile, continua con gli altri (commit e340e33)
+- **Velocità Bluetooth**: Aggiornata a 115200 baud per trasmissione più rapida (commit e340e33)
+- **Scrittura non bloccante**: Ottimizzata per ridurre pause durante debug (commit e340e33)
+- **Ottimizzazione RAM** (commit efab69f): Gestione stringhe migliorata e riduzione buffer seriali
 
 ## Utilizzo Base
 

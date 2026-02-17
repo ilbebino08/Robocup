@@ -2,15 +2,43 @@
 
 Gestisce la logica di alto livello per l'inseguimento della linea e la gestione degli stati del robot tramite macchina a stati.
 
+## Architettura Modularizzata
+
+A partire dal commit efab69f, la libreria è stata divisa in moduli specializzati per migliore manutenibilità:
+
+### File Principali
+
+- **`lineLogic.cpp`** / **`lineLogic.h`**: Core logic e dispatcher principale
+  - `statoLinea()` - Rilevamento stato della linea
+  - `initLineLogic()` - Inizializzazione stati
+  - `gestisciLinea()` - Dispatcher centrale con gerarchia di priorità
+
+- **`lineLogic_verde.cpp`** / **`lineLogic_verde.h`**: Gestione verdi singoli e doppi
+  - `gestisciDoppioVerde()` - Rotazione 180° e avanzamento cieco
+  - `gestisciVerdeSinistra()` / `gestisciVerdeDestra()` - Curve 90°
+  - `gestisciVerdeConLineaZero()` - Gestione verde con linea perfettamente centrata
+  - Struct: `StatoVerde`, `StatoDoppioVerde`, `StatoVerdeZero`
+
+- **`lineLogic_interruzione.cpp`** / **`lineLogic_interruzione.h`**: Gestione gap nella linea
+  - `gestisciNoLinea()` - Attraversamento interruzioni e recovery
+  - Struct: `StatoInterruzione`
+
+- **`lineLogic_ostacolo.cpp`** / **`lineLogic_ostacolo.h`**: Gestione ostacoli
+  - `gestisciOstacolo()` - Aggiramento ostacoli con sensori ToF
+  - Struct: `StatoOstacolo`
+
 ## Caratteristiche
 
 - Macchina a stati per gestione intelligente di situazioni complesse
 - Rilevamento intersezioni verdi con distinzione pre/post curva
 - Gestione interruzioni linea con attraversamento automatico
-- Raddrizzamento automatico agli incroci (fix recente)
-- Rotazione su doppio verde
+- Raddrizzamento automatico agli incroci (commit 9565883)
+- Rotazione su doppio verde (commit c3c6f12)
 - Correzione automatica in caso di perdita linea
 - Feedback LED per stato corrente
+- **Gestione sensori ToF integrata** (commit c3c6f12, 512bb16): Rilevamento ostacoli durante il line following
+- **Ottimizzazione RAM** (commit efab69f): Uso di `uint8_t` e `uint16_t` per stati/timer, rimozione debug verbose
+- **Architettura modulare**: Codice diviso in sottomoduli specializzati per semplicità di manutenzione
 
 ## Stati Gestiti
 
