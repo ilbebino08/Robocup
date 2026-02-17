@@ -22,7 +22,7 @@ long lastNoLineaTime = 0;
 void setup() {
     Serial.begin(115200);
     Serial1.begin(57600);
-    Serial3.begin(9600);
+    Serial3.begin(115200);  // HC-05 a velocità massima
     
     // Inizializza il sistema di debug
     debug.begin(DEBUG_USB | DEBUG_BLUETOOTH); // Cambia a DEBUG_USB | DEBUG_BLUETOOTH per usare anche Bluetooth

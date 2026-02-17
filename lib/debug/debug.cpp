@@ -26,7 +26,7 @@ void Debug::begin(uint8_t outputs) {
 void Debug::setBluetoothSerial(HardwareSerial* serial) {
     bluetoothSerial = serial;
     if (bluetoothSerial && !(*bluetoothSerial)) {
-        bluetoothSerial->begin(9600); // Velocità standard Bluetooth
+        bluetoothSerial->begin(115200); // HC-05 a velocità massima
     }
 }
 
@@ -75,7 +75,11 @@ void Debug::print(const char* message) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->print(message);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        size_t len = strlen(message);
+        if (bluetoothSerial->availableForWrite() >= len) {
+            bluetoothSerial->print(message);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -89,7 +93,10 @@ void Debug::print(int value) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->print(value);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 6) {  // int max ~6 caratteri
+            bluetoothSerial->print(value);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -103,7 +110,10 @@ void Debug::print(float value) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->print(value);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 10) {  // float ~10 caratteri
+            bluetoothSerial->print(value);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -117,7 +127,10 @@ void Debug::print(double value) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->print(value);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 10) {  // double ~10 caratteri
+            bluetoothSerial->print(value);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -142,7 +155,11 @@ void Debug::println(const char* message) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->println(message);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        size_t len = strlen(message) + 2;  // +2 per \r\n
+        if (bluetoothSerial->availableForWrite() >= len) {
+            bluetoothSerial->println(message);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -165,7 +182,10 @@ void Debug::println(int value) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->println(value);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 8) {  // int + \r\n
+            bluetoothSerial->println(value);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -188,7 +208,10 @@ void Debug::println(float value) {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->println(value);
+        // Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 12) {  // float + \r\n
+            bluetoothSerial->println(value);
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -208,7 +231,10 @@ void Debug::println(double value) {
     
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
-    }
+    }// Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 12) {  // double + \r\n
+            bluetoothSerial->println(value);
+        }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
         bluetoothSerial->println(value);
@@ -225,7 +251,10 @@ void Debug::println() {
     }
     
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->println();
+        // Scrittura non bloccante: salta se il buffer è pieno
+        if (bluetoothSerial->availableForWrite() >= 2) {  // solo \r\n
+            bluetoothSerial->println();
+        }
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {

@@ -1,0 +1,26 @@
+#include <Arduino.h>
+
+void setup() {
+    Serial.begin(9600);
+    Serial3.begin(38400);  // Velocità predefinita AT mode
+    
+    delay(1000);
+    Serial.println("HC-05 AT Mode Configuration");
+    Serial.println("Invio comandi AT...");
+    
+    // Imposta baudrate a 115200
+    Serial3.print("AT+UART=115200,0,0\r\n");
+    delay(1000);
+    
+    Serial.println("Configurazione completata!");
+}
+
+void loop() {
+    // Passa comandi da Serial a Serial3 e viceversa
+    if (Serial.available()) {
+        Serial3.write(Serial.read());
+    }
+    if (Serial3.available()) {
+        Serial.write(Serial3.read());
+    }
+}

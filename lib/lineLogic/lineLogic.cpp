@@ -13,13 +13,17 @@ void gestisciOstacolo();
 #define TEMPO_VERIFICA          250   // Tempo di verifica prima della decisione
 #define CONTATORE_CONFERMA      3     // Numero di letture consecutive per conferma verde
 #define TIMEOUT_FALSO_VERDE     500   // Timeout per rilevare un falso verde
-#define TEMPO_IGNORA_VERDE      1000  // Tempo in ms per ignorare verdi dopo l'ultimo verde gestito
+#define TEMPO_IGNORA_VERDE      2000  // Tempo in ms per ignorare verdi singoli dopo l'ultimo verde gestito
+#define TEMPO_IGNORA_DOPPIO_VERDE 500 // Tempo in ms per ignorare doppio verde dopo l'ultimo doppio verde
 #define VELOCITA_180            0     // Velocità durante la rotazione di 180 gradi (-1023 a +1023)
 #define ANGOLO_180              1750  // Angolo per rotazione sul posto (massimo)
-#define TEMPO_180               1000  // Tempo per completare la rotazione di 180 gradi
+#define TEMPO_180               2000  // Tempo per completare la rotazione di 180 gradi
 #define VELOCITA_AVANZA_CIECO   800   // Velocità durante l'avanzamento cieco dopo rotazione 180
-#define TEMPO_AVANZA_CIECO      500   // Tempo di avanzamento cieco in millisecondi
+#define TEMPO_AVANZA_CIECO      1000  // Tempo di avanzamento cieco in millisecondi
 #define VELOCITA_RALLENTA       400   // Velocità ridotta durante la conferma del verde
+#define VELOCITA_VERIFICA       300   // Velocità durante la verifica del verde
+#define TEMPO_VERIFICA_AVANTI   200   // Tempo in ms per avanzare durante verifica
+#define TEMPO_VERIFICA_INDIETRO 200   // Tempo in ms per indietreggiare durante verifica
 #define SOGLIA_OSTACOLO         100   // Distanza in mm per rilevare ostacolo davanti
 #define VELOCITA_OSTACOLO       600   // Velocità durante l'evitamento dell'ostacolo
 // Riferimenti agli oggetti globali definiti in main.cpp
@@ -30,14 +34,15 @@ extern tofManager tof_manager;
 
 // Struct per lo stato della gestione del verde
 struct StatoVerde {
-    enum Stato { S_NORMALE = 0, S_RILEVATO = 1, S_VERIFICA = 2, S_IN_MANOVRA = 3, S_AVANZA_DOPO = 4 };
+    enum Stato { S_NORMALE = 0, S_RILEVATO = 1, S_VERIFICA_AVANTI = 2, S_VERIFICA_INDIETRO = 3, S_IN_MANOVRA = 4, S_AVANZA_DOPO = 5 };
     Stato stato;
     unsigned long tempoRilevazione;
     int contatoreConsecutivo;
     unsigned long tempoAvanzamento;
     int lineaIniziale;  // Valore della linea al momento del rilevamento
+    bool doppioVerdeRilevato;  // Flag per indicare se durante la verifica è stato visto doppio verde
     
-    StatoVerde() : stato(S_NORMALE), tempoRilevazione(0), contatoreConsecutivo(0), tempoAvanzamento(0), lineaIniziale(0) {}
+    StatoVerde() : stato(S_NORMALE), tempoRilevazione(0), contatoreConsecutivo(0), tempoAvanzamento(0), lineaIniziale(0), doppioVerdeRilevato(false) {}
     
     void reset() {
         stato = S_NORMALE;
@@ -45,6 +50,7 @@ struct StatoVerde {
         contatoreConsecutivo = 0;
         tempoAvanzamento = 0;
         lineaIniziale = 0;
+        doppioVerdeRilevato = false;
     }
 };
 
@@ -126,8 +132,9 @@ struct StatoOstacolo {
 
 static StatoOstacolo statoOstacolo;
 
-// Tempo dell'ultimo verde gestito
+// Tempo dell'ultimo verde gestito (separato per singoli e doppio)
 static unsigned long ultimoTempoVerde = 0;
+static unsigned long ultimoTempoDoppioVerde = 0;
 
 /**
  * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
@@ -177,16 +184,41 @@ void gestisciLinea(int stato) {
     bool verde_sx = IR_board.checkGreenSx();
     bool doppio_verde = (verde_dx && verde_sx);
     
+    // Flag per sensori verdi con debug RAW
+    static bool flag_verde_dx = false;
+    static bool flag_verde_sx = false;
+    
+    if (verde_dx && !flag_verde_dx) {
+        debug.println("*** SENSORE VERDE DX ATTIVATO (RAW bit7=1) ***");
+        flag_verde_dx = true;
+    } else if (!verde_dx && flag_verde_dx) {
+        debug.println("*** SENSORE VERDE DX DISATTIVATO (RAW bit7=0) ***");
+        flag_verde_dx = false;
+    }
+    
+    if (verde_sx && !flag_verde_sx) {
+        debug.println("*** SENSORE VERDE SX ATTIVATO (RAW bit6=1) ***");
+        flag_verde_sx = true;
+    } else if (!verde_sx && flag_verde_sx) {
+        debug.println("*** SENSORE VERDE SX DISATTIVATO (RAW bit6=0) ***");
+        flag_verde_sx = false;
+    }
+    
     // Invia dati su seriale
-    debug.print("Linea: ");
-    debug.print(line_position);
-    debug.print(" | Verde_DX: ");
+    unsigned long tempoTrascorsoVerde = millis() - ultimoTempoVerde;
+    unsigned long tempoTrascorsoDoppioVerde = millis() - ultimoTempoDoppioVerde;
+    
+    debug.print("Verde_DX: ");
     debug.print(verde_dx ? "SI" : "NO");
     debug.print(" | Verde_SX: ");
     debug.print(verde_sx ? "SI" : "NO");
     debug.print(" | Doppio_Verde: ");
     debug.print(doppio_verde ? "SI" : "NO");
-    debug.print(" | Stato: ");
+    debug.print(" | Delay_Verde: ");
+    debug.print((int)tempoTrascorsoVerde);
+    debug.print("ms | Delay_Doppio: ");
+    debug.print((int)tempoTrascorsoDoppioVerde);
+    debug.print("ms | Stato: ");
     debug.println(stato);
     
     // Gestione LED in base allo stato
@@ -215,6 +247,12 @@ void gestisciLinea(int stato) {
         return;
     }
     
+    // PRIORITÀ ALTA: Doppio verde in fase di conferma (S_RILEVATO)
+    if (statoDoppioVerde.stato == StatoDoppioVerde::S_RILEVATO) {
+        gestisciDoppioVerde();
+        return;
+    }
+    
     if (statoVerdeDx.stato == StatoVerde::S_IN_MANOVRA) {
         gestisciVerdeDestra();
         return;
@@ -227,7 +265,10 @@ void gestisciLinea(int stato) {
     
     // PRIORITÀ MASSIMA: Doppio verde ha precedenza su tutto
     // Se rileviamo doppio verde mentre siamo in gestione di verde singolo, cancelliamo lo stato singolo
-    if (stato == DOPPIO_VERDE) {
+    // MA ignoriamo nuovi doppi verdi durante la rotazione o avanzamento cieco
+    if (stato == DOPPIO_VERDE && 
+        statoDoppioVerde.stato != StatoDoppioVerde::S_IN_ROTAZIONE && 
+        statoDoppioVerde.stato != StatoDoppioVerde::S_AVANZA_CIECO) {
         debug.println("DOPPIO VERDE rilevato - priorità massima!");
         // Resetta eventuali stati di verde singolo in corso
         if (statoVerdeDx.stato != StatoVerde::S_NORMALE) {
@@ -298,8 +339,8 @@ void gestisciLinea(int stato) {
 void gestisciDoppioVerde() {
     switch (statoDoppioVerde.stato) {
         case StatoDoppioVerde::S_NORMALE:
-            // Ignora il doppio verde se è passato meno di 500ms dall'ultimo verde gestito
-            if (millis() - ultimoTempoVerde < TEMPO_IGNORA_VERDE) {
+            // Ignora il doppio verde se è passato meno di TEMPO_IGNORA_DOPPIO_VERDE dall'ultimo doppio verde gestito
+            if (millis() - ultimoTempoDoppioVerde < TEMPO_IGNORA_DOPPIO_VERDE) {
                 debug.println("Doppio verde ignorato: troppo vicino all'ultimo");
                 return;
             }
@@ -312,8 +353,8 @@ void gestisciDoppioVerde() {
             break;
             
         case StatoDoppioVerde::S_RILEVATO:
-            // Rallenta e continua a seguire la linea mentre verifica il doppio verde
-            pidLineFollowing(VELOCITA_RALLENTA);
+            // FERMO: resta fermo mentre verifica il doppio verde
+            motori.stop();
             
             if (statoLinea() == DOPPIO_VERDE) {
                 statoDoppioVerde.contatoreConsecutivo++;
@@ -350,7 +391,7 @@ void gestisciDoppioVerde() {
                     debug.print("Rotazione 180 completata dopo ");
                     debug.print((int)tempoRotazione);
                     debug.println("ms: avanzamento cieco.");
-                    ultimoTempoVerde = millis();  // Aggiorna il tempo dell'ultimo verde gestito
+                    ultimoTempoDoppioVerde = millis();  // Aggiorna il tempo dell'ultimo doppio verde gestito
                     statoDoppioVerde.stato = StatoDoppioVerde::S_AVANZA_CIECO;
                     statoDoppioVerde.tempoInizio = millis();
                     resetPID();
@@ -385,7 +426,7 @@ void gestisciDoppioVerde() {
 void gestisciVerdeGenerico(StatoVerde& stato, int statoCorrente, int velocita, int angolo, const char* nomeDir) {
     switch (stato.stato) {
         case StatoVerde::S_NORMALE:
-            // Ignora il verde se è passato meno di 500ms dall'ultimo verde gestito
+            // Ignora il verde se è passato meno di TEMPO_IGNORA_VERDE dall'ultimo verde gestito
             if (millis() - ultimoTempoVerde < TEMPO_IGNORA_VERDE) {
                 debug.println("Verde ignorato: troppo vicino all'ultimo");
                 return;
@@ -393,30 +434,33 @@ void gestisciVerdeGenerico(StatoVerde& stato, int statoCorrente, int velocita, i
             
             debug.print("Verde ");
             debug.print(nomeDir);
-            debug.println(" rilevato: mi fermo.");
+            debug.println(" rilevato: inizio verifica.");
             motori.stop();
             stato.stato = StatoVerde::S_RILEVATO;
             stato.tempoRilevazione = millis();
             stato.contatoreConsecutivo = 0;
+            stato.doppioVerdeRilevato = false;
             stato.lineaIniziale = IR_board.line();
             break;
 
         case StatoVerde::S_RILEVATO:
-            // Rallenta e continua a seguire la linea mentre verifica il verde
-            pidLineFollowing(VELOCITA_RALLENTA);
+            // Conta conferme rimanendo fermo
+            motori.stop();
             
-            if (statoLinea() == statoCorrente) {
+            // Controlla se è doppio verde
+            if (statoLinea() == DOPPIO_VERDE) {
+                stato.doppioVerdeRilevato = true;
+                debug.println("DOPPIO VERDE rilevato durante conferma!");
+            }
+            
+            if (statoLinea() == statoCorrente || stato.doppioVerdeRilevato) {
                 stato.contatoreConsecutivo++;
                 debug.print("Contatore verde: ");
                 debug.println(stato.contatoreConsecutivo);
                 
                 if (stato.contatoreConsecutivo >= CONTATORE_CONFERMA) {
-                    debug.print("Verde ");
-                    debug.print(nomeDir);
-                    debug.println(" confermato: eseguo manovra.");
-                    resetPID();
-                    motori.muovi(velocita, angolo);
-                    stato.stato = StatoVerde::S_IN_MANOVRA;
+                    debug.println("Verde confermato: inizio verifica avanti-indietro.");
+                    stato.stato = StatoVerde::S_VERIFICA_AVANTI;
                     stato.tempoAvanzamento = millis();
                 }
             } else {
@@ -432,8 +476,55 @@ void gestisciVerdeGenerico(StatoVerde& stato, int statoCorrente, int velocita, i
             }
             break;
 
-        case StatoVerde::S_VERIFICA:
-            // Stato non più utilizzato, passa direttamente alla manovra
+        case StatoVerde::S_VERIFICA_AVANTI:
+            // Avanza leggermente controllando se è doppio verde
+            motori.muovi(VELOCITA_VERIFICA, 0);
+            
+            // Controlla se è doppio verde
+            if (statoLinea() == DOPPIO_VERDE) {
+                stato.doppioVerdeRilevato = true;
+                debug.println("DOPPIO VERDE rilevato durante verifica avanti!");
+            }
+            
+            if (millis() - stato.tempoAvanzamento >= TEMPO_VERIFICA_AVANTI) {
+                debug.println("Verifica avanti completata: indietreggio.");
+                stato.stato = StatoVerde::S_VERIFICA_INDIETRO;
+                stato.tempoAvanzamento = millis();
+            }
+            break;
+
+        case StatoVerde::S_VERIFICA_INDIETRO:
+            // Indietreggia leggermente controllando se è doppio verde
+            motori.muovi(-VELOCITA_VERIFICA, 0);
+            
+            // Controlla se è doppio verde
+            if (statoLinea() == DOPPIO_VERDE) {
+                stato.doppioVerdeRilevato = true;
+                debug.println("DOPPIO VERDE rilevato durante verifica indietro!");
+            }
+            
+            if (millis() - stato.tempoAvanzamento >= TEMPO_VERIFICA_INDIETRO) {
+                debug.println("Verifica indietro completata.");
+                motori.stop();
+                
+                // Decidi azione in base a cosa è stato rilevato
+                if (stato.doppioVerdeRilevato) {
+                    debug.println("Doppio verde confermato: passo al gestore doppio verde.");
+                    // Resetta questo stato e attiva il doppio verde
+                    stato.reset();
+                    statoDoppioVerde.stato = StatoDoppioVerde::S_RILEVATO;
+                    statoDoppioVerde.tempoInizio = millis();
+                    statoDoppioVerde.contatoreConsecutivo = 0;
+                } else {
+                    debug.print("Verde ");
+                    debug.print(nomeDir);
+                    debug.println(" singolo: eseguo manovra.");
+                    resetPID();
+                    motori.muovi(velocita, angolo);
+                    stato.stato = StatoVerde::S_IN_MANOVRA;
+                    stato.tempoAvanzamento = millis();
+                }
+            }
             break;
 
         case StatoVerde::S_IN_MANOVRA:
