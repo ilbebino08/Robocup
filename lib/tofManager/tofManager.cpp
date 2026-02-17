@@ -1,7 +1,13 @@
 #include "tofManager.h"
 
 void tof::refresh() {
-    sensor.rangingTest(&data);
+    VL53L0X_RangingMeasurementData_t measure;  // Variabile locale temporanea
+    sensor.rangingTest(&measure);
+    distance = measure.RangeMilliMeter;  // Salva solo la distanza
+}
+
+uint16_t tof::getDistance() {
+    return distance;
 }
 
 void dWrite(bool val) {
@@ -25,13 +31,9 @@ bool tof::setID(uint8_t newAddr) {
 bool tofManager::setID() {
     // Metti tutti i sensori in reset (LOW)
     dWrite(LOW);
-
     delay(10);
-
     dWrite(HIGH);
-
     delay(10);
-
     dWrite(LOW);
 
     if(!front.setID(ADDR_FRONT)) return false;
@@ -40,7 +42,6 @@ bool tofManager::setID() {
     if(!posSX.setID(ADDR_POSSX)) return false;
     if(!posDX.setID(ADDR_POSDX)) return false;
     if(!ball.setID(ADDR_BALL))   return false;
-    // Tutti i sensori dovrebbero ora rispondere a indirizzi diversi
     return true;
 }
 

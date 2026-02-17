@@ -85,7 +85,7 @@ bool BottomSensor::Utils::calibration() {
 //lettura valori calibrazione
 uint16_t* BottomSensor::Utils::calibration_val() {
 
-  static uint16_t* val = new uint16_t[N_SENSOR*2];
+  static uint16_t val[N_SENSOR*2];  // Array statico invece di new
   uint8_t buffer;
 
   Serial1.flush();
@@ -139,7 +139,7 @@ uint16_t BottomSensor::Utils::val_sensor(uint8_t n){
 
 //lettura valori sensori
 uint16_t* BottomSensor::Utils::val_sensor(){
-    static uint16_t* val = new uint16_t[N_SENSOR];
+    static uint16_t val[N_SENSOR];  // Array statico invece di new
 
     for (uint8_t i = 0; i < N_SENSOR; i++) val[i] = val_sensor(i);
 
@@ -172,7 +172,7 @@ uint16_t BottomSensor::Utils::val_sensorCal(uint8_t ch){
 
 //lettura sensori calibrati
 uint16_t* BottomSensor::Utils::val_sensorCal() {
-    static uint16_t* val = new uint16_t[N_SENSOR];
+    static uint16_t val[N_SENSOR];  // Array statico invece di new
 
     for (uint8_t i = 0; i < N_SENSOR; i++) val[i] = val_sensorCal(i);
 

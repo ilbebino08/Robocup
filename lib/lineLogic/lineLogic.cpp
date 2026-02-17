@@ -35,17 +35,17 @@ extern tofManager tof_manager;
 // Struct per lo stato della gestione del verde
 struct StatoVerde {
     enum Stato { S_NORMALE = 0, S_RILEVATO = 1, S_VERIFICA_AVANTI = 2, S_VERIFICA_INDIETRO = 3, S_IN_MANOVRA = 4, S_AVANZA_DOPO = 5 };
-    Stato stato;
-    unsigned long tempoRilevazione;
-    int contatoreConsecutivo;
-    unsigned long tempoAvanzamento;
-    int lineaIniziale;  // Valore della linea al momento del rilevamento
-    bool doppioVerdeRilevato;  // Flag per indicare se durante la verifica è stato visto doppio verde
-    
-    StatoVerde() : stato(S_NORMALE), tempoRilevazione(0), contatoreConsecutivo(0), tempoAvanzamento(0), lineaIniziale(0), doppioVerdeRilevato(false) {}
-    
+    uint8_t stato;
+    uint16_t tempoRilevazione;
+    uint8_t contatoreConsecutivo;
+    uint16_t tempoAvanzamento;
+    int16_t lineaIniziale;
+    bool doppioVerdeRilevato;
+
+    StatoVerde() : stato(0), tempoRilevazione(0), contatoreConsecutivo(0), tempoAvanzamento(0), lineaIniziale(0), doppioVerdeRilevato(false) {}
+
     void reset() {
-        stato = S_NORMALE;
+        stato = 0;
         tempoRilevazione = 0;
         contatoreConsecutivo = 0;
         tempoAvanzamento = 0;
@@ -60,14 +60,14 @@ static StatoVerde statoVerdeSx;
 // Stato per la gestione del doppio verde (rotazione 180)
 struct StatoDoppioVerde {
     enum Stato { S_NORMALE = 0, S_RILEVATO = 1, S_IN_ROTAZIONE = 2, S_AVANZA_CIECO = 3 };
-    Stato stato;
-    unsigned long tempoInizio;
-    int contatoreConsecutivo;
-    
-    StatoDoppioVerde() : stato(S_NORMALE), tempoInizio(0), contatoreConsecutivo(0) {}
-    
+    uint8_t stato;
+    uint16_t tempoInizio;  // Ridotto da unsigned long
+    uint8_t contatoreConsecutivo;  // Ridotto da int
+
+    StatoDoppioVerde() : stato(0), tempoInizio(0), contatoreConsecutivo(0) {}
+
     void reset() {
-        stato = S_NORMALE;
+        stato = 0;
         tempoInizio = 0;
         contatoreConsecutivo = 0;
     }
@@ -78,13 +78,13 @@ static StatoDoppioVerde statoDoppioVerde;
 // Stato per la gestione dell'interruzione di linea
 struct StatoInterruzione {
     enum Stato { S_NORMALE = 0, S_FERMATO = 1, S_AVANTI_COLORE = 2, S_INDIETRO_COLORE = 3, S_CERCA_LINEA = 4, S_VERIFICA = 5, S_AVANZA_INTERRUZIONE = 6 };
-    Stato stato;
-    unsigned long tempoInizio;
-    
-    StatoInterruzione() : stato(S_NORMALE), tempoInizio(0) {}
-    
+    uint8_t stato;
+    uint16_t tempoInizio;  // Ridotto da unsigned long
+
+    StatoInterruzione() : stato(0), tempoInizio(0) {}
+
     void reset() {
-        stato = S_NORMALE;
+        stato = 0;
         tempoInizio = 0;
     }
 };
@@ -94,13 +94,13 @@ static StatoInterruzione statoInterruzione;
 // Stato per la gestione del verde con linea a 0
 struct StatoVerdeZero {
     enum Stato { S_NORMALE = 0, S_FERMO = 1, S_INDIETRO_VERIFICA = 2 };
-    Stato stato;
-    unsigned long tempoInizio;
-    
-    StatoVerdeZero() : stato(S_NORMALE), tempoInizio(0) {}
-    
+    uint8_t stato;
+    uint16_t tempoInizio;  // Ridotto da unsigned long
+
+    StatoVerdeZero() : stato(0), tempoInizio(0) {}
+
     void reset() {
-        stato = S_NORMALE;
+        stato = 0;
         tempoInizio = 0;
     }
 };
@@ -119,22 +119,22 @@ struct StatoOstacolo {
         S_RICERCA_LINEA = 6,
         S_RIENTRO = 7
     };
-    Stato stato;
-    unsigned long tempoInizio;
-    
-    StatoOstacolo() : stato(S_NORMALE), tempoInizio(0) {}
-    
+    uint8_t stato;
+    uint16_t tempoInizio;  // Ridotto da unsigned long
+
+    StatoOstacolo() : stato(0), tempoInizio(0) {}
+
     void reset() {
-        stato = S_NORMALE;
+        stato = 0;
         tempoInizio = 0;
     }
 };
 
 static StatoOstacolo statoOstacolo;
 
-// Tempo dell'ultimo verde gestito (separato per singoli e doppio)
-static unsigned long ultimoTempoVerde = 0;
-static unsigned long ultimoTempoDoppioVerde = 0;
+// Tempo dell'ultimo verde gestito - uint16_t invece di unsigned long
+static uint16_t ultimoTempoVerde = 0;
+static uint16_t ultimoTempoDoppioVerde = 0;
 
 /**
  * @brief Restituisce lo stato attuale della linea rilevata dai sensori.
@@ -170,7 +170,7 @@ void initLineLogic() {
 void gestisciLinea(int stato) {
     // Leggi il sensore frontale per ostacoli via accesso diretto
     tof_manager.front.refresh();
-    int distanza = tof_manager.front.data.RangeMilliMeter;
+    int distanza = tof_manager.front.distance;
 
     // Se c'è un ostacolo o manovra in corso, ha la priorità assoluta
     if ((distanza > 0 && distanza < SOGLIA_OSTACOLO) || statoOstacolo.stato != StatoOstacolo::S_NORMALE) {
@@ -182,45 +182,26 @@ void gestisciLinea(int stato) {
     int line_position = IR_board.line();
     bool verde_dx = IR_board.checkGreenDx();
     bool verde_sx = IR_board.checkGreenSx();
-    bool doppio_verde = (verde_dx && verde_sx);
+    // bool doppio_verde = (verde_dx && verde_sx);  // Non più usato dopo ottimizzazione debug
     
     // Flag per sensori verdi con debug RAW
     static bool flag_verde_dx = false;
     static bool flag_verde_sx = false;
     
     if (verde_dx && !flag_verde_dx) {
-        debug.println("*** SENSORE VERDE DX ATTIVATO (RAW bit7=1) ***");
+        debug.println("*** VERDE DX ***");
         flag_verde_dx = true;
     } else if (!verde_dx && flag_verde_dx) {
-        debug.println("*** SENSORE VERDE DX DISATTIVATO (RAW bit7=0) ***");
         flag_verde_dx = false;
     }
     
     if (verde_sx && !flag_verde_sx) {
-        debug.println("*** SENSORE VERDE SX ATTIVATO (RAW bit6=1) ***");
+        debug.println("*** VERDE SX ***");
         flag_verde_sx = true;
     } else if (!verde_sx && flag_verde_sx) {
-        debug.println("*** SENSORE VERDE SX DISATTIVATO (RAW bit6=0) ***");
         flag_verde_sx = false;
     }
-    
-    // Invia dati su seriale
-    unsigned long tempoTrascorsoVerde = millis() - ultimoTempoVerde;
-    unsigned long tempoTrascorsoDoppioVerde = millis() - ultimoTempoDoppioVerde;
-    
-    debug.print("Verde_DX: ");
-    debug.print(verde_dx ? "SI" : "NO");
-    debug.print(" | Verde_SX: ");
-    debug.print(verde_sx ? "SI" : "NO");
-    debug.print(" | Doppio_Verde: ");
-    debug.print(doppio_verde ? "SI" : "NO");
-    debug.print(" | Delay_Verde: ");
-    debug.print((int)tempoTrascorsoVerde);
-    debug.print("ms | Delay_Doppio: ");
-    debug.print((int)tempoTrascorsoDoppioVerde);
-    debug.print("ms | Stato: ");
-    debug.println(stato);
-    
+
     // Gestione LED in base allo stato
     if (stato == VERDE_SX || stato == VERDE_DX || stato == DOPPIO_VERDE) {
         digitalWrite(LED_V, HIGH);
@@ -269,14 +250,12 @@ void gestisciLinea(int stato) {
     if (stato == DOPPIO_VERDE && 
         statoDoppioVerde.stato != StatoDoppioVerde::S_IN_ROTAZIONE && 
         statoDoppioVerde.stato != StatoDoppioVerde::S_AVANZA_CIECO) {
-        debug.println("DOPPIO VERDE rilevato - priorità massima!");
+        debug.println("*** DOPPIO VERDE ***");
         // Resetta eventuali stati di verde singolo in corso
         if (statoVerdeDx.stato != StatoVerde::S_NORMALE) {
-            debug.println("Annullo gestione verde DX per doppio verde");
             statoVerdeDx.reset();
         }
         if (statoVerdeSx.stato != StatoVerde::S_NORMALE) {
-            debug.println("Annullo gestione verde SX per doppio verde"); 
             statoVerdeSx.reset();
         }
         gestisciDoppioVerde();
@@ -297,10 +276,10 @@ void gestisciLinea(int stato) {
             if (statoVerdeDx.stato == StatoVerde::S_RILEVATO || 
                 statoVerdeSx.stato == StatoVerde::S_RILEVATO || 
                 statoDoppioVerde.stato == StatoDoppioVerde::S_RILEVATO) {
-                debug.println("Seguendo la linea RALLENTATA (conferma verde).");
+                // debug.println("Seguendo la linea RALLENTATA (conferma verde).");  // Commentato
                 pidLineFollowing(VELOCITA_RALLENTA);
             } else {
-                debug.println("Seguendo la linea.");
+                // debug.println("Seguendo la linea.");  // Commentato
                 if (statoVerdeDx.stato != StatoVerde::S_NORMALE && statoVerdeDx.stato != StatoVerde::S_IN_MANOVRA) 
                     statoVerdeDx.reset();
                 if (statoVerdeSx.stato != StatoVerde::S_NORMALE && statoVerdeSx.stato != StatoVerde::S_IN_MANOVRA) 

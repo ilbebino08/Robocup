@@ -16,8 +16,8 @@ MultiClickButton button(BUTTON);
 Braccio braccio;
 tofManager tof_manager;
 
-long timer = 0;
-long lastNoLineaTime = 0;
+uint16_t timer = 0;  // Ridotto da long
+uint16_t lastNoLineaTime = 0;  // Ridotto da long
 
 void setup() {
     Serial.begin(115200);
@@ -25,7 +25,7 @@ void setup() {
     Serial3.begin(115200);  // HC-05 a velocità massima
     
     // Inizializza il sistema di debug
-    debug.begin(DEBUG_USB | DEBUG_BLUETOOTH); // Cambia a DEBUG_USB | DEBUG_BLUETOOTH per usare anche Bluetooth
+    debug.begin(DEBUG_USB | DEBUG_BLUETOOTH);
     debug.setBluetoothSerial(&Serial3);
     
     // Inizializza il sensorBoard

@@ -17,8 +17,6 @@ private:
     HardwareSerial* bluetoothSerial;
     File logFile;
     bool sdEnabled;
-    String logFileName;
-    String lastMessage;
     
 public:
     Debug();

@@ -9,14 +9,13 @@ class tof{
     private:
         Adafruit_VL53L0X sensor;  // Oggetto per il sensore ToF
         
-        
     public:
         int xshutPin; // Pin XSHUT per il controllo del sensore
-        VL53L0X_RangingMeasurementData_t data; // Struttura per i dati del sensore
+        uint16_t distance; // Distanza in millimetri (invece della struttura pesante)
 
         bool setID(uint8_t newAddr);
         void refresh();
-
+        uint16_t getDistance(); // Ottieni la distanza
 };
 
 class tofManager {

@@ -11,28 +11,24 @@
 #define KD           0.4    // Coefficiente derivativo. Aumenta per stabilizzare, Diminuisci se il robot diventa rigido (range: 0.2-1.5)
 #define MAX_STEERING 1750   // Massimo angolo di sterzata. Aumenta per curve più marcate, Diminuisci per movimenti più dolci (min: 500, max: 1750)
 
-// ===== VARIABILI GLOBALI PER IL PID (dichiarazioni esterne) =====
-extern float integral_error;     // Errore integrale accumulato
-extern float last_line_position; // Ultima posizione della linea
-extern unsigned long last_time;  // Ultimo tempo di aggiornamento
+// ===== VARIABILI GLOBALI PER IL PID =====
+static float integral_error = 0.0;     // Errore integrale accumulato
+static float last_line_position = 0.0; // Ultima posizione della linea
+static uint16_t last_time = 0;  // Ridotto da unsigned long (usa millis() % 65536)
 
 // Dichiarazioni esterne
 extern BottomSensor IR_board;
 extern Motori motori;
-
-// Definizione variabili globali PID
-float integral_error = 0.0;
-float last_line_position = 0.0;
-unsigned long last_time = 0;
 
 
 short pidLineFollowing(short base_vel) {
     // Leggi la posizione della linea dal sensorBoard
     int16_t line_position = IR_board.line();
     
-    // Calcola il tempo trascorso da ultimo calcolo (in millisecondi)
-    unsigned long current_time = millis();
-    float delta_time = (current_time - last_time) / 1000.0;  // Converti in secondi
+    // Calcola il tempo trascorso usando uint16_t (overflow dopo 65.5s è gestibile)
+    uint16_t current_time = (uint16_t)(millis() & 0xFFFF);
+    uint16_t delta_time_ms = current_time - last_time;
+    float delta_time = delta_time_ms / 1000.0;  // Converti in secondi
     
     if (delta_time <= 0) delta_time = 0.001;  // Evita divisioni per 0
     
@@ -93,6 +89,6 @@ short pidLineFollowing(short base_vel) {
 void resetPID() {
     integral_error = 0.0;
     last_line_position = 0.0;
-    last_time = millis();
+    last_time = (uint16_t)(millis() & 0xFFFF);
     debug.println("PID reset.");
 }

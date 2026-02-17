@@ -8,8 +8,6 @@ Debug::Debug() {
     outputMask = 0;
     bluetoothSerial = nullptr;
     sdEnabled = false;
-    logFileName = "";
-    lastMessage = "";
 }
 
 void Debug::begin(uint8_t outputs) {
@@ -31,8 +29,6 @@ void Debug::setBluetoothSerial(HardwareSerial* serial) {
 }
 
 bool Debug::setSDCard(const char* fileName, uint8_t csPin) {
-    logFileName = String(fileName);
-    
     if (!SD.begin(csPin)) {
         if (outputMask & DEBUG_USB) {
             Serial.println("Errore: SD card non trovata!");
@@ -42,7 +38,7 @@ bool Debug::setSDCard(const char* fileName, uint8_t csPin) {
     }
     
     // Apri il file in modalità append
-    logFile = SD.open(logFileName.c_str(), FILE_WRITE);
+    logFile = SD.open(fileName, FILE_WRITE);
     if (!logFile) {
         if (outputMask & DEBUG_USB) {
             Serial.println("Errore: impossibile aprire il file di log!");
@@ -77,7 +73,7 @@ void Debug::print(const char* message) {
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
         // Scrittura non bloccante: salta se il buffer è pieno
         size_t len = strlen(message);
-        if (bluetoothSerial->availableForWrite() >= len) {
+        if (static_cast<size_t>(bluetoothSerial->availableForWrite()) >= len) {
             bluetoothSerial->print(message);
         }
     }
@@ -143,13 +139,6 @@ void Debug::println(const String& message) {
 }
 
 void Debug::println(const char* message) {
-    // Controlla se il messaggio è uguale all'ultimo inviato
-    if (String(message) == lastMessage) {
-        return; // Non inviare messaggi duplicati
-    }
-    
-    lastMessage = String(message);
-    
     if (outputMask & DEBUG_USB) {
         Serial.println(message);
     }
@@ -157,7 +146,7 @@ void Debug::println(const char* message) {
     if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
         // Scrittura non bloccante: salta se il buffer è pieno
         size_t len = strlen(message) + 2;  // +2 per \r\n
-        if (bluetoothSerial->availableForWrite() >= len) {
+        if (static_cast<size_t>(bluetoothSerial->availableForWrite()) >= len) {
             bluetoothSerial->println(message);
         }
     }
@@ -168,15 +157,6 @@ void Debug::println(const char* message) {
 }
 
 void Debug::println(int value) {
-    String valueStr = String(value);
-    
-    // Controlla se il messaggio è uguale all'ultimo inviato
-    if (valueStr == lastMessage) {
-        return; // Non inviare messaggi duplicati
-    }
-    
-    lastMessage = valueStr;
-    
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
     }
@@ -194,15 +174,6 @@ void Debug::println(int value) {
 }
 
 void Debug::println(float value) {
-    String valueStr = String(value);
-    
-    // Controlla se il messaggio è uguale all'ultimo inviato
-    if (valueStr == lastMessage) {
-        return; // Non inviare messaggi duplicati
-    }
-    
-    lastMessage = valueStr;
-    
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
     }
@@ -220,24 +191,15 @@ void Debug::println(float value) {
 }
 
 void Debug::println(double value) {
-    String valueStr = String(value);
-    
-    // Controlla se il messaggio è uguale all'ultimo inviato
-    if (valueStr == lastMessage) {
-        return; // Non inviare messaggi duplicati
-    }
-    
-    lastMessage = valueStr;
-    
     if (outputMask & DEBUG_USB) {
         Serial.println(value);
-    }// Scrittura non bloccante: salta se il buffer è pieno
+    }
+    
+    if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
+        // Scrittura non bloccante: salta se il buffer è pieno
         if (bluetoothSerial->availableForWrite() >= 12) {  // double + \r\n
             bluetoothSerial->println(value);
         }
-    
-    if ((outputMask & DEBUG_BLUETOOTH) && bluetoothSerial) {
-        bluetoothSerial->println(value);
     }
     
     if ((outputMask & DEBUG_SD) && sdEnabled) {
@@ -263,7 +225,7 @@ void Debug::println() {
 }
 
 void Debug::printf(const char* format, ...) {
-    char buffer[256];
+    char buffer[64];
     va_list args;
     va_start(args, format);
     vsnprintf(buffer, sizeof(buffer), format, args);
