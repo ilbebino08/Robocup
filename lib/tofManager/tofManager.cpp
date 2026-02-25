@@ -29,19 +29,107 @@ bool tof::setID(uint8_t newAddr) {
 }
 
 bool tofManager::setID() {
-    // Metti tutti i sensori in reset (LOW)
-    dWrite(LOW);
+    // Metti tutti i sensori in reset (LOW) - spegni tutto
+    digitalWrite(XSHUT_FRONT, LOW);
+    digitalWrite(XSHUT_SX_ANT, LOW);
+    digitalWrite(XSHUT_SX_POS, LOW);
+    digitalWrite(XSHUT_DX_ANT, LOW);
+    digitalWrite(XSHUT_DX_POS, LOW);
+    digitalWrite(XSHUT_PALLINA, LOW);
+    delay(50);
+    
+    debug.println("Assegnazione indirizzi I2C...");
     delay(10);
-    dWrite(HIGH);
-    delay(10);
-    dWrite(LOW);
+    
+    // Accendi SOLO front, assegna indirizzo, poi spegni
+    digitalWrite(XSHUT_FRONT, HIGH);
+    delay(50);
+    if(!front.setID(ADDR_FRONT)) {
+        debug.println("  ✗ FRONT fallito");
+        return false;
+    }
+    debug.println("  ✓ FRONT assegnato");
+    digitalWrite(XSHUT_FRONT, LOW);
+    delay(20);
 
-    if(!front.setID(ADDR_FRONT)) return false;
-    if(!antSX.setID(ADDR_ANTSX)) return false;
-    if(!antDX.setID(ADDR_ANTDX)) return false;
-    if(!posSX.setID(ADDR_POSSX)) return false;
-    if(!posDX.setID(ADDR_POSDX)) return false;
-    if(!ball.setID(ADDR_BALL))   return false;
+    // Accendi SOLO antSX
+    digitalWrite(XSHUT_SX_ANT, HIGH);
+    delay(50);
+    if(!antSX.setID(ADDR_ANTSX)) {
+        debug.println("  ✗ ANTSX fallito");
+        return false;
+    }
+    debug.println("  ✓ ANTSX assegnato");
+    digitalWrite(XSHUT_SX_ANT, LOW);
+    delay(20);
+
+    // Accendi SOLO antDX
+    digitalWrite(XSHUT_DX_ANT, HIGH);
+    delay(50);
+    if(!antDX.setID(ADDR_ANTDX)) {
+        debug.println("  ✗ ANTDX fallito");
+        return false;
+    }
+    debug.println("  ✓ ANTDX assegnato");
+    digitalWrite(XSHUT_DX_ANT, LOW);
+    delay(20);
+
+    // Accendi SOLO posSX
+    digitalWrite(XSHUT_SX_POS, HIGH);
+    delay(50);
+    if(!posSX.setID(ADDR_POSSX)) {
+        debug.println("  ✗ POSSX fallito");
+        return false;
+    }
+    debug.println("  ✓ POSSX assegnato");
+    digitalWrite(XSHUT_SX_POS, LOW);
+    delay(20);
+
+    // Accendi SOLO posDX
+    digitalWrite(XSHUT_DX_POS, HIGH);
+    delay(100); // Delay più lungo per POSDX
+    debug.println("  Inizializzazione POSDX...");
+    delay(5);
+    if(!posDX.setID(ADDR_POSDX)) {
+        debug.println("  ✗ POSDX fallito");
+        digitalWrite(XSHUT_DX_POS, LOW);
+        delay(20);
+        return false;
+    }
+    debug.println("  ✓ POSDX assegnato");
+    delay(50); // Delay ancora più lungo
+    digitalWrite(XSHUT_DX_POS, LOW);
+    delay(100); // Delay lungo dopo spegnimento per stabilizzare
+
+    // Accendi SOLO ball - TEMPORANEAMENTE DISABILITATO PER DEBUG
+    debug.println("  Inizializzazione PALLINA...");
+    delay(20);
+    digitalWrite(XSHUT_PALLINA, HIGH);
+    delay(150);
+    debug.println("  Chiamata setID PALLINA...");
+    delay(10);
+    
+    // Commentiamo il setID di ball per escludere dal debug
+    // if(!ball.setID(ADDR_BALL)) {
+    //     debug.println("  ✗ PALLINA fallita");
+    //     digitalWrite(XSHUT_PALLINA, LOW);
+    //     delay(50);
+    //     return false;
+    // }
+    debug.println("  ⊘ PALLINA saltata (debug)");
+    delay(50);
+    digitalWrite(XSHUT_PALLINA, LOW);
+    delay(100);
+
+    // Accendi TUTTI i sensori per il funzionamento normale
+    digitalWrite(XSHUT_FRONT, HIGH);
+    digitalWrite(XSHUT_SX_ANT, HIGH);
+    digitalWrite(XSHUT_SX_POS, HIGH);
+    digitalWrite(XSHUT_DX_ANT, HIGH);
+    digitalWrite(XSHUT_DX_POS, HIGH);
+    digitalWrite(XSHUT_PALLINA, HIGH);
+    delay(50);
+    
     return true;
 }
 
@@ -86,5 +174,5 @@ void tofManager::refreshAll(){
     antDX.refresh();
     posSX.refresh();
     posDX.refresh();
-    ball.refresh();
+    // ball.refresh(); // DISABILITATO - Sensore guasto
 }

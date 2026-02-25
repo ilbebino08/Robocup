@@ -66,7 +66,7 @@ const uint8_t ADDR_FRONT  = 0x30;
 const uint8_t ADDR_ANTSX  = 0x31;
 const uint8_t ADDR_ANTDX  = 0x32;
 const uint8_t ADDR_POSSX  = 0x33;
-const uint8_t ADDR_POSDX  = 0x34;
+const uint8_t ADDR_POSDX  = 0x36;  // Cambiato da 0x34 per evitare conflitti
 const uint8_t ADDR_BALL   = 0x35;
 
 

@@ -58,16 +58,24 @@ void gestisciOstacolo() {
                 tof_manager.posDX.refresh();
                 tof_manager.posSX.refresh();
                 
-                if (tof_manager.posDX.getDistance() > tof_manager.posSX.getDistance()) {
+                uint16_t distDX = tof_manager.posDX.getDistance();
+                uint16_t distSX = tof_manager.posSX.getDistance();
+                debug.print("STERZATA_FUORI - PosDX:");
+                debug.print((int)distDX);
+                debug.print("mm | PosSX:");
+                debug.print((int)distSX);
+                debug.println("mm");
+                
+                if (distDX > distSX) {
                     statoOstacolo.latoCosteggiamento = 0; // Costeggia a destra
-                    debug.println("Costeggiamento DESTRA");
+                    debug.println("→ Costeggiamento DESTRA");
                 } else {
                     statoOstacolo.latoCosteggiamento = 1; // Costeggia a sinistra
-                    debug.println("Costeggiamento SINISTRA");
+                    debug.println("→ Costeggiamento SINISTRA");
                 }
                 statoOstacolo.minDistPericolo = 2000;
                 statoOstacolo.contatoreLetture = 0;
-                debug.println("Avanza fuori linea");
+                debug.println("TRANSIZIONE: Avanza fuori linea (S_AVANZA_FUORI)");
                 motori.muovi(VELOCITA_OSTACOLO, 0);
                 statoOstacolo.stato = StatoOstacolo::S_AVANZA_FUORI;
                 statoOstacolo.tempoInizio = millis();
@@ -89,11 +97,17 @@ void gestisciOstacolo() {
                 
                 if (distPill < statoOstacolo.minDistPericolo) {
                     statoOstacolo.minDistPericolo = distPill;
+                    debug.print("AVANZA_FUORI [");
+                    debug.print((int)tempoTrascorso);
+                    debug.print("ms] Nuovo minimo: ");
+                    debug.print((int)distPill);
+                    debug.println("mm");
                 }
 
                 if (tempoTrascorso >= 800) {
-                    debug.print("Sterza parallelo. Minimo visto: ");
-                    debug.println((int)statoOstacolo.minDistPericolo);
+                    debug.print("TRANSIZIONE: Sterza parallelo. Minimo visto: ");
+                    debug.print((int)statoOstacolo.minDistPericolo);
+                    debug.println("mm → S_STERZATA_DENTRO");
                     
                     motori.muovi(VELOCITA_OSTACOLO, -1750);
                     statoOstacolo.stato = StatoOstacolo::S_STERZATA_DENTRO;
@@ -105,7 +119,7 @@ void gestisciOstacolo() {
         case StatoOstacolo::S_STERZATA_DENTRO:
             motori.muovi(VELOCITA_OSTACOLO, -1750);
             if (tempoTrascorso >= 700) {
-                debug.println("Avanza laterale");
+                debug.println("TRANSIZIONE: Avanza laterale (S_AVANZA_LATERALE)");
                 motori.muovi(VELOCITA_OSTACOLO, 0);
                 statoOstacolo.stato = StatoOstacolo::S_AVANZA_LATERALE;
                 statoOstacolo.tempoInizio = millis();
@@ -139,6 +153,9 @@ void gestisciOstacolo() {
                 // Monitora pericoli sul lato opposto (pilastri non visti prima)
                 if (distOppposta < statoOstacolo.minDistPericolo) {
                     statoOstacolo.minDistPericolo = distOppposta;
+                    debug.print("AVANZA_LAT: NUOVO MINIMO OPPOSTO: ");
+                    debug.print((int)distOppposta);
+                    debug.println("mm");
                 }
 
                 // GESTIONE COSTEGGIAMENTO INTELLIGENTE
@@ -146,18 +163,35 @@ void gestisciOstacolo() {
                     // Passaggio stretto/Pillastro rilevato dal lato opposto: cerchiamo il centro
                     sterzata = (distGuida - distOppposta) * 4; 
                     if (abs(sterzata) > 1300) sterzata = (sterzata > 0 ? 1300 : -1300);
-                    debug.println("CENTRAMENTO ATTIVO (Tunnel/Pilastro)");
+                    debug.print("[");
+                    debug.print((int)tempoTrascorso);
+                    debug.print("ms] TUNNEL - Guida:");
+                    debug.print((int)distGuida);
+                    debug.print("mm Opp:");
+                    debug.print((int)distOppposta);
+                    debug.print("mm Sterzo:");
+                    debug.println(sterzata);
                 } else {
                     // Costeggiamento normale: manteniamo DISTANZA_COSTEGGIAMENTO
                     int errore = (int)distGuida - DISTANZA_COSTEGGIAMENTO;
                     sterzata = errore * 6; 
                     if (statoOstacolo.latoCosteggiamento == 1) sterzata = -sterzata;
+                    debug.print("[");
+                    debug.print((int)tempoTrascorso);
+                    debug.print("ms] NORMALE - Guida:");
+                    debug.print((int)distGuida);
+                    debug.print("mm Target:");
+                    debug.print(DISTANZA_COSTEGGIAMENTO);
+                    debug.print("mm Sterzo:");
+                    debug.println(sterzata);
                 }
 
-                motori.muovi(450, sterzata); // Velocità ridotta per maggiore precisione
+                motori.muovi(500, sterzata); // Velocità leggermente aumentata
 
-                if (tempoTrascorso >= 1600) { 
-                    debug.println("Ricerca linea...");
+                if (tempoTrascorso >= 2200) { // Aumentato da 1600 a 2200ms - più tempo per passare
+                    debug.print("TRANSIZIONE: Ricerca linea dopo ");
+                    debug.print((int)tempoTrascorso);
+                    debug.println("ms → S_RICERCA_LINEA");
                     motori.muovi(VELOCITA_OSTACOLO, -1200);
                     statoOstacolo.stato = StatoOstacolo::S_RICERCA_LINEA;
                     statoOstacolo.tempoInizio = millis();
@@ -172,14 +206,23 @@ void gestisciOstacolo() {
                 
                 // Sterziamo per incrociare la linea con un angolo di circa 50-60 gradi
                 motori.muovi(VELOCITA_OSTACOLO - 100, dirRicerca); 
+                
+                debug.print("[");
+                debug.print((int)tempoTrascorso);
+                debug.print("ms] RICERCA_LINEA - LinePos:");
+                debug.print(line_pos);
+                debug.print(" Dir:");
+                debug.println(dirRicerca);
 
                 // Se rileviamo qualcosa che somiglia a una linea
                 if (line_pos > -1750 && line_pos < 1750) {
                     // Se la troviamo troppo presto (es. < 300ms) probabilmente è una linea parallela falsa
                     if (tempoTrascorso < 300) {
-                        debug.println("Linea rilevata troppo presto (probabile parallela falsa). Ignoro.");
+                        debug.println("  → Linea rilevata troppo presto (probabile parallela falsa). Ignoro.");
                     } else {
-                        debug.println("Incrocio linea rilevato: inizio verifica...");
+                        debug.print("  → INCROCIO LINEA RILEVATO a ");
+                        debug.print((int)tempoTrascorso);
+                        debug.println("ms: inizio verifica...");
                         motori.stop();
                         statoOstacolo.stato = StatoOstacolo::S_VERIFICA_LINEA;
                         statoOstacolo.tempoInizio = millis();
@@ -203,17 +246,21 @@ void gestisciOstacolo() {
                         uint8_t count = 0;
                         for (int i = 0; i < 8; i++) if (IR_board.utils.val_sensorCal(i) > 600) count++;
                         
-                        // Se troppi sensori sono attivi (>5), siamo quasi paralleli alla linea
-                        // Solitamente dovremmo arrivare a 50-90 gradi (2-4 sensori)
-                        if (count > 5) {
-                            debug.print("ERRORE: Angolo troppo piatto (Sensori: ");
+                        debug.print("VERIFICA Step0: Sensori attivi: ");
+                        debug.println((int)count);
+                        
+                        // Se troppi sensori sono attivi (>6), siamo quasi paralleli alla linea
+                        // Tolleriamo fino a 6 sensori perché potremmo uscire in angolo acuto
+                        if (count > 6) {
+                            debug.print("  ✗ ERRORE: Angolo troppo piatto (");
                             debug.print((int)count);
-                            debug.println("). Probabile linea falsa parallela.");
+                            debug.println("). Torno a ricerca...");
                             statoOstacolo.stato = StatoOstacolo::S_RICERCA_LINEA;
                             statoOstacolo.tempoInizio = millis(); 
                             return;
                         }
                         
+                        debug.println("  → Step1: Avanzo 200ms");
                         statoOstacolo.verificaStep = 1;
                         statoOstacolo.tempoInizio = millis();
                     }
@@ -221,6 +268,7 @@ void gestisciOstacolo() {
                     // Avanza lentamente per "tagliare" la linea
                     motori.muovi(300, 0); 
                     if (tempoTrascorso > 200) {
+                        debug.println("  → Step2: Arretro 300ms");
                         statoOstacolo.verificaStep = 2;
                         statoOstacolo.tempoInizio = millis();
                     }
@@ -228,6 +276,7 @@ void gestisciOstacolo() {
                     // Arretra per confermare la traccia
                     motori.muovi(-300, 0);
                     if (tempoTrascorso > 300) {
+                        debug.println("  → Step3: Verifico sensori finali");
                         statoOstacolo.verificaStep = 3;
                     }
                 } else {
@@ -235,11 +284,15 @@ void gestisciOstacolo() {
                     for (int i = 0; i < 8; i++) {
                         if (IR_board.utils.val_sensorCal(i) > 550) sensoriFinali++;
                     }
+                    
+                    debug.print("VERIFICA Step3: Sensori finali = ");
+                    debug.println((int)sensoriFinali);
 
-                    // Una linea incrociata correttamente a 50-90 gradi attiva solitamente 2-4 sensori
-                    if (sensoriFinali >= 2 && sensoriFinali <= 5) {
-                        debug.print("Linea CERTIFICATA (Angolo OK): ");
-                        debug.println(sensoriFinali);
+                    // Una linea incrociata correttamente a 50-90 gradi attiva solitamente 1-6 sensori
+                    if (sensoriFinali >= 1 && sensoriFinali <= 6) {
+                        debug.print("  ✓ Linea CERTIFICATA - Sensori: ");
+                        debug.print(sensoriFinali);
+                        debug.println(" - RIENTRO!");
                         
                         // Manovra di rientro: sterza nel verso opposto alla ricerca per allinearsi
                         short dirRientro = (statoOstacolo.latoCosteggiamento == 0) ? 1750 : -1750;
@@ -248,7 +301,9 @@ void gestisciOstacolo() {
                         statoOstacolo.stato = StatoOstacolo::S_RIENTRO;
                         statoOstacolo.tempoInizio = millis();
                     } else {
-                        debug.println("Verifica fallita: linea non coerente o angolo errato.");
+                        debug.print("  ✗ Verifica fallita - Sensori: ");
+                        debug.print(sensoriFinali);
+                        debug.println(" - RICERCA CONTINUA");
                         statoOstacolo.stato = StatoOstacolo::S_RICERCA_LINEA;
                         statoOstacolo.tempoInizio = millis();
                     }
@@ -258,7 +313,9 @@ void gestisciOstacolo() {
 
         case StatoOstacolo::S_RIENTRO:
             if (abs(line_pos) < 500 || tempoTrascorso > 700) {
-                debug.println("Rientro completato");
+                debug.print("OSTACOLO SUPERATO in ");
+                debug.print((int)tempoTrascorso);
+                debug.println("ms");
                 statoOstacolo.reset();
                 resetPID();
             }
