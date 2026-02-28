@@ -176,3 +176,13 @@ void tofManager::refreshAll(){
     posDX.refresh();
     // ball.refresh(); // DISABILITATO - Sensore guasto
 }
+
+uint16_t* tofManager::getAllDistances() {
+    static uint16_t distances[5];
+    distances[0] = front.getDistance();
+    distances[1] = antSX.getDistance();
+    distances[2] = antDX.getDistance();
+    distances[3] = posSX.getDistance();
+    distances[4] = posDX.getDistance();
+    return distances;
+}

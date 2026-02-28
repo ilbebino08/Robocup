@@ -31,6 +31,7 @@ class tofManager {
 
         bool init();
         void refreshAll();
+        uint16_t* getAllDistances();
 
 };
 

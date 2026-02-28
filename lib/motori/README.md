@@ -11,7 +11,7 @@ Sistema di locomozione omnidirezionale a 3 ruote:
 ## Caratteristiche
 
 - Controllo differenziale con sterzo posteriore indipendente
-- Velocità e angolo come parametri separati
+- **Velocità e angolo gestiti come due vettori separati**
 - Inversione motori configurabile per correggere cablaggi
 - Deadzone configurabile per motori a riposo
 - Limiti di sicurezza su velocità e sterzo
@@ -41,14 +41,9 @@ Comanda i motori con velocità e angolo di sterzo specificati.
   - Negativo: ruota posteriore a sinistra
   - Zero: ruota posteriore centrata
   - Positivo: ruota posteriore a destra
-  - Controlla solo il motore posteriore
 
-**Mapping velocità:**
-- Avanti (vel ≥ 0): `map(vel, 0, 1023, ZEROMIN, MAX)`
-- Indietro (vel < 0): `map(abs(vel), 0, 1023, ZEROMAX, MIN)`
-
-**Mapping sterzo:**
-- `map(ang, -1750, 1750, MIN, MAX)` applicato al motore posteriore
+**Nota:**
+- La velocità e l'angolo sono trattati come due vettori separati, calcolati e combinati per determinare il comportamento dei motori.
 
 **Esempio:**
 ```cpp

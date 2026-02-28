@@ -1,288 +1,116 @@
-# Libreria lineLogic
+# Libreria `lineLogic`
 
-Gestisce la logica di alto livello per l'inseguimento della linea e la gestione degli stati del robot tramite macchina a stati.
+Macchina a stati completa per il seguimento linea nella RoboCup Junior Rescue Line 2026.
 
-## Architettura Modularizzata
+## Architettura
 
-A partire dal commit efab69f, la libreria è stata divisa in moduli specializzati per migliore manutenibilità:
-
-### File Principali
-
-- **`lineLogic.cpp`** / **`lineLogic.h`**: Core logic e dispatcher principale
-  - `statoLinea()` - Rilevamento stato della linea
-  - `initLineLogic()` - Inizializzazione stati
-  - `gestisciLinea()` - Dispatcher centrale con gerarchia di priorità
-
-- **`lineLogic_verde.cpp`** / **`lineLogic_verde.h`**: Gestione verdi singoli e doppi
-  - `gestisciDoppioVerde()` - Rotazione 180° e avanzamento cieco
-  - `gestisciVerdeSinistra()` / `gestisciVerdeDestra()` - Curve 90°
-  - `gestisciVerdeConLineaZero()` - Gestione verde con linea perfettamente centrata
-  - Struct: `StatoVerde`, `StatoDoppioVerde`, `StatoVerdeZero`
-
-- **`lineLogic_interruzione.cpp`** / **`lineLogic_interruzione.h`**: Gestione gap nella linea
-  - `gestisciNoLinea()` - Attraversamento interruzioni e recovery
-  - Struct: `StatoInterruzione`
-
-- **`lineLogic_ostacolo.cpp`** / **`lineLogic_ostacolo.h`**: Gestione ostacoli
-  - `gestisciOstacolo()` - Aggiramento ostacoli con sensori ToF
-  - Struct: `StatoOstacolo`
+FSM (Finite State Machine) non bloccante con 12 stati, suddivisa in moduli indipendenti:
+- **GreenManager**: debounce e classificazione eventi verde
+- **LineRecovery**: recupero linea persa (retromarcia → centro → avanzamento)
+- **ObstacleHandler**: aggiramento ostacoli con scelta laterale
+- **IntersectionHandler**: attraversamento incroci
+- **UTurnHandler**: inversione a U su doppio verde
 
 ## Caratteristiche
 
-- Macchina a stati per gestione intelligente di situazioni complesse
-- Rilevamento intersezioni verdi con distinzione pre/post curva
-- Gestione interruzioni linea con attraversamento automatico
-- Raddrizzamento automatico agli incroci (commit 9565883)
-- Rotazione su doppio verde (commit c3c6f12)
-- Correzione automatica in caso di perdita linea
-- Feedback LED per stato corrente
-- **Gestione sensori ToF integrata** (commit c3c6f12, 512bb16): Rilevamento ostacoli durante il line following
-- **Ottimizzazione RAM** (commit efab69f): Uso di `uint8_t` e `uint16_t` per stati/timer, rimozione debug verbose
-- **Architettura modulare**: Codice diviso in sottomoduli specializzati per semplicità di manutenzione
+- **Zero delay()**: tutto basato su `millis()` e macchina a stati
+- **Ottimizzazione RAM**: `RobotContext` ~36 byte, stati come `enum uint8_t`
+- **Zero allocazioni dinamiche**: nessun `new`, `malloc` o `String`
+- **Costanti centralizzate**: tutte in `config.h`, nessun magic number nei sorgenti
+- **Debounce verde robusto**: gestisce falsi positivi singoli e doppio verde letto in ritardo
+- **Integrazione trasparente**: usa le API esistenti (`motori`, `sensorBoard`, `tofManager`, `followLine`, `debug`)
 
-## Stati Gestiti
+## Stati FSM
 
-### Stati Principali della Linea
+| Stato | Descrizione |
+|---|---|
+| `STATE_FOLLOWING` | Seguimento linea normale con PID |
+| `STATE_LINE_LOST_REVERSE` | Retromarcia per cercare la linea |
+| `STATE_LINE_LOST_CENTER` | Sterzata verso il centro |
+| `STATE_LINE_LOST_FORWARD` | Avanzamento lento fino a conferma |
+| `STATE_OBSTACLE_BACK` | Retromarcia da ostacolo |
+| `STATE_OBSTACLE_CHOOSE_SIDE` | Scelta lato aggiramento |
+| `STATE_OBSTACLE_BYPASS` | Aggiramento in corso |
+| `STATE_OBSTACLE_REALIGN` | Riallineamento sulla linea |
+| `STATE_TURN_LEFT` | Svolta 90° a sinistra (verde singolo SX) |
+| `STATE_TURN_RIGHT` | Svolta 90° a destra (verde singolo DX) |
+| `STATE_INTERSECTION` | Attraversamento incrocio |
+| `STATE_UTURN` | Inversione a U (doppio verde) |
 
-- `LINEA`: Inseguimento normale con PID
-- `VERDE_SX`: Intersezione verde a sinistra (curva 90° SX)
-- `VERDE_DX`: Intersezione verde a destra (curva 90° DX)
-- `DOPPIO_VERDE`: Doppio verde rilevato (stop/fine percorso)
-- `RADDRIZZAMENTO`: Correzione direzione post-curva (fix commit 9565883)
-- `NO_LINEA`: Linea persa (gap detection/recupero)
-- `COL_RILEVATO`: Colore speciale rilevato (stop)
+## API
 
-### Macchina a Stati per Verde
+### `void begin()`
+Inizializza il contesto FSM e imposta lo stato a `STATE_FOLLOWING`.
 
-Gestione intelligente per distinguere verde prima della curva (da seguire) dal verde dopo la curva (da ignorare):
+### `void update()`
+Ciclo principale da chiamare in `loop()`. Aggiorna TOF, verde, linea e smista allo stato corrente.
 
-1. `S_NORMALE`: Nessun verde rilevato, inseguimento normale
-2. `S_RILEVATO`: Verde appena rilevato, avvia verifica consistenza
-3. `S_VERIFICA`: Verifica se verde è pre-curva o post-curva
-   - Pre-curva: linea scostata (> SOGLIA_SCOSTAMENTO) → procedi a sterzata
-   - Post-curva: linea stabile → ignora verde e continua
-4. `S_IN_MANOVRA`: Esecuzione sterzata 90°
-5. `S_AVANZA_DOPO`: Avanzamento post-curva, verde ignorato temporaneamente
+**Priorità eventi in STATE_FOLLOWING:**
+1. Ostacolo (sicurezza fisica)
+2. Doppio verde (inversione U)
+3. Verde singolo (svolta obbligata)
+4. Verde WAITING (attendi finestra)
+5. Incrocio (solo se nessun verde)
+6. Linea persa (recovery)
+7. Following normale (PID)
 
-### Macchina a Stati per Interruzione
+### `void onRobotReplaced()`
+Reset completo dopo riposizionamento manuale del robot.
 
-Gestione attraversamento gap nella linea:
+## Struttura file
 
-1. `S_NORMALE`: Nessuna interruzione rilevata
-2. `S_FERMATO`: Stop per valutazione situazione
-3. `S_AVANTI_COLORE`: Avanza cercando colore speciale
-4. `S_INDIETRO_COLORE`: Torna indietro cercando colore speciale
-5. `S_CERCA_LINEA`: Retromarcia fino a ritrovare linea
-6. `S_VERIFICA`: Verifica tipo (interruzione vs rotatoria)
-7. `S_AVANZA_INTERRUZIONE`: Attraversamento gap confermato
-
-Durante l'interruzione controlla continuamente eventuali verdi per gestirli con priorità.
-
-### Gestione Linea a Zero
-
-Quando la linea è perfettamente centrata (posizione 0):
-
-1. `S_NORMALE`: Rilevamento linea centrata
-2. `S_FERMO`: Pausa per stabilizzazione
-3. `S_INDIETRO_VERIFICA`: Retromarcia lenta per identificare tipo verde
-
-### Macchina a Stati per Ostacolo
-
-Gestione completa dell'aggiramento ostacoli con sensori ToF (VL53L0X) e protezione pilastri:
-
-1. `S_NORMALE`: Rilevamento ostacolo frontale (soglia 50mm).
-2. `S_CENTRAMENTO`: Arretramento di 400ms per scansionare l'area circostante e allineamento PID alla linea.
-3. `S_STERZATA_FUORI`: Rotazione per uscire dalla linea. Scelta automatica del lato di costeggiamento (Destra o Sinistra) basata sullo spazio libero rilevato dai sensori posteriori.
-4. `S_AVANZA_FUORI`: Avanzamento per superare la sagoma frontale dell'ostacolo. Monitoraggio continuo del lato opposto per rilevare pilastri o pareti durante il sorpasso.
-5. `S_STERZATA_DENTRO`: Rotazione per mettersi parallelo all'ostacolo.
-6. `S_AVANZA_LATERALE`: Costeggiamento attivo a 50mm di distanza.
-   - **Costeggiamento Proporzionale**: Regolazione continua della sterzata per mantenere la distanza dal sensore laterale.
-   - **Sicurezza Opposta**: Lettura del sensore opposto ogni 10 cicli.
-   - **Logica Tunnel/Pilastro**: Se viene rilevato un ostacolo anche sul lato opposto, il robot smette di costeggiare e si auto-centra tra i due per non sbattere.
-7. `S_RICERCA_LINEA`: Rotazione verso il percorso con angolo di circa 50-60°. Ignora rilevazioni troppo precoci (<300ms) per evitare linee parallele false.
-8. `S_VERIFICA_LINEA`: Validazione della linea trovata tramite movimento "Avanti-Indietro":
-   - **Analisi Spaziale**: Verifica la larghezza della linea tramite gli 8 sensori IR singoli (scarta se < 2 o > 5 sensori attivi).
-   - **Filtro Angolare**: Scarta la linea se l'approccio è troppo piatto (segno di linea di un'altra parte del percorso).
-9. `S_RIENTRO`: Allineamento finale e ripresa del PID di linea normale.
-
-## Feedback LED
-
-- **LED Verde**: Verde rilevato (SX/DX/DOPPIO)
-- **LED Rosso**: Interruzione in corso
-- **LED Giallo**: Inseguimento linea normale
-
-Pin LED definiti in `include/robot.h`:
-- `LED_V` (22): LED verde
-- `LED_R` (23): LED rosso
-- `LED_G` (24): LED giallo
-
-## API Principali
-
-### `void initLineLogic()`
-
-Inizializza tutti gli stati interni della macchina a stati.
-
-**Chiamare in setup() prima di iniziare il line following.**
-
-**Esempio:**
-```cpp
-void setup() {
-    // ... altri setup ...
-    initLineLogic();
-}
+```
+lib/lineLogic/
+├── config.h                  # Tutte le costanti configurabili
+├── RescueLineFollower.h      # Header classe principale
+├── RescueLineFollower.cpp    # Implementazione FSM
+├── library.json              # Metadati PlatformIO
+├── README.md
+└── src/
+    ├── FSMState.h            # Enum stati (uint8_t)
+    ├── RobotContext.h        # Struct stato condiviso (~36 byte)
+    ├── GreenManager.h/.cpp   # Debounce verde + finestra doppio
+    ├── LineRecovery.h/.cpp   # Recovery linea persa
+    ├── ObstacleHandler.h/.cpp # Aggiramento ostacoli
+    ├── IntersectionHandler.h/.cpp # Incroci
+    └── UTurnHandler.h/.cpp   # Inversione a U
 ```
 
-### `int statoLinea()`
+## Configurazione
 
-Legge i sensori e restituisce lo stato corrente della linea.
+Tutte le costanti sono definite in `config.h`:
 
-**Ritorno:**
-- `LINEA`: Linea presente e tracciabile
-- `NO_LINEA`: Linea ai limiti estremi (±1750) o persa
-- `VERDE_SX`: Marcatore verde a sinistra
-- `VERDE_DX`: Marcatore verde a destra
-- `DOPPIO_VERDE`: Entrambi i sensori verdi attivi
-- `COL_RILEVATO`: Colore speciale rilevato
+**Velocità:**
+- `BASE_VEL` (500): velocità base following
+- `REVERSE_VEL` (-350): retromarcia recovery
+- `SEARCH_VEL` (250): avanzamento lento ricerca
+- `CROSS_VEL` (350): velocità attraversamento incrocio
 
-**Esempio:**
-```cpp
-int stato = statoLinea();
-```
+**Timeout (ms):**
+- `LINE_LOST_CONFIRM_MS` (250): conferma linea persa
+- `REVERSE_SEARCH_MS` (600): durata retromarcia recovery
+- `GREEN_DOUBLE_WINDOW_MS` (120): finestra attesa doppio verde
 
-### `void gestisciLinea(int stato)`
+**Soglie:**
+- `OBSTACLE_DETECT_MM` (120): distanza rilevamento ostacolo
+- `GREEN_CONFIRM_READS` (3): cicli consecutivi per confermare verde
+- `CENTER_THRESHOLD` (200): soglia posizione per "centrato"
 
-Funzione principale di gestione della macchina a stati.
-
-**Parametri:**
-- `stato`: Valore ritornato da `statoLinea()`
-
-**Chiamare ad ogni iterazione del loop.**
-
-**Esempio:**
-```cpp
-void loop() {
-    button.update();
-    int stato = statoLinea();
-    gestisciLinea(stato);
-}
-```
-
-### Funzioni di Gestione Stati Specifici
-
-**`void gestisciVerdeSinistra()`**  
-Gestisce manovra curva a sinistra 90°. Non bloccante.
-
-**`void gestisciVerdeDestra()`**  
-Gestisce manovra curva a destra 90° con verifica intelligente pre/post curva.
-
-**`void gestisciDoppioVerde()`**  
-Ferma il robot. Usato per fine percorso.
-
-**`void gestisciRaddrizzamento()`**  
-Raddrizza il robot dopo una curva verde (fix recente per evitare deviazioni).
-
-**`void gestisciNoLinea()`**  
-Gestisce gap detection e attraversamento interruzioni.
-
-## Logica Avanzata
-
-### Distinzione Verde Pre/Post Curva
-
-Il sistema previene falsi positivi distinguendo:
-
-- **Pre-curva**: Linea si scosta significativamente (> `SOGLIA_SCOSTAMENTO`) → esegue sterzata
-- **Post-curva**: Linea stabile, verde persistente per `TIMEOUT_FALSO_VERDE` → ignora e continua dritto
-
-Questo evita di curvare due volte sulla stessa intersezione.
-
-### Rilevamento Tipo Interruzione
-
-Una linea è considerata interruzione se:
-1. Sensori laterali non rilevano linea (valore ±1750)
-2. Dopo retromarcia, sensore frontale rileva linea
-3. Linea ritrovata è nel range centrale (-500 a +500)
-
-Se non è interruzione → applica correzione direzionale basata sulla posizione.
-
-### Controllo Verde Durante Interruzione
-
-Durante l'attraversamento, il sistema controlla continuamente eventuali marcatori verdi e interrompe la procedura di gap per gestirli normalmente (priorità alta).
-
-### Raddrizzamento Post-Curva (NUOVO)
-
-Dopo una curva verde, il robot entra nello stato `RADDRIZZAMENTO` che:
-- Raddrizza la direzione del robot
-- Previene deviazioni dalla traiettoria corretta
-- Fix introdotto nel commit 9565883 (30/01/2026)
-
-## Parametri Configurabili
-
-Definiti in `lineLogic.cpp`:
+## Esempio d'uso
 
 ```cpp
-VELOCITA_STERZATA   600   // Velocità durante sterzata
-ANGOLO_STERZATA     1750  // Angolo sterzata massima  
-TEMPO_STERZATA      300   // Durata sterzata (ms)
-SOGLIA_SCOSTAMENTO  1500  // Soglia per rilevare verde pre-curva
-TEMPO_VERIFICA      250   // Tempo verifica verde (ms)
-CONTATORE_CONFERMA  3     // Letture consecutive per conferma
-TIMEOUT_FALSO_VERDE 500   // Timeout falsi positivi (ms)
-VELOCITA_180        0     // Velocità rotazione 180°
-ANGOLO_180          1750  // Angolo rotazione 180°
-TEMPO_180           1000  // Durata rotazione 180° (ms)
-```
+#include <RescueLineFollower.h>
 
-Modifica questi valori per ottimizzare il comportamento del robot.
-
-## Esempio Completo
-
-```cpp
-#include <Arduino.h>
-#include <sensorBoard.h>
-#include <motori.h>
-#include <lineLogic.h>
-#include <MultiClickButton.h>
-
-BottomSensor IR_board;
-Motori motori;
-MultiClickButton button(BUTTON);
-
-void singoloClick() {
-    // Toggle pausa
-}
+RescueLineFollower lineFollower;
 
 void setup() {
-    Serial.begin(115200);
-    
-    // Inizializza subsistemi
-    IR_board.start();
-    motori.init();
-    button.begin();
-    button.onSingleClick(singoloClick);
-    
-    // Inizializza logica linea
-    initLineLogic();
-    
-    pinMode(LED_V, OUTPUT);
-    pinMode(LED_R, OUTPUT);
-    pinMode(LED_G, OUTPUT);
+    // ... init motori, sensori, tof ...
+    lineFollower.begin();
 }
 
 void loop() {
-    button.update();
-    
-    int stato = statoLinea();
-    gestisciLinea(stato);
-    
-    delay(10);
+    if (!paused) {
+        lineFollower.update();
+    }
 }
-```
-
-## Note Tecniche
-
-- La libreria dipende da: `sensorBoard`, `motori`, `followLine`, `debug`
-- Stati gestiti tramite `switch-case` per efficienza
-- Timer basati su `millis()` per operazioni non bloccanti
-- Contatori di conferma per evitare falsi positivi
-- Isteresi sulle transizioni di stato per stabilità
 ```

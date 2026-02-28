@@ -20,13 +20,13 @@ static uint16_t last_time = 0;  // Ridotto da unsigned long (usa millis() % 6553
 extern BottomSensor IR_board;
 extern Motori motori;
 
+short pidLineFollowing(short base_vel){
+    pidLineFollowing(base_vel, IR_board.line());
+}
 
-short pidLineFollowing(short base_vel) {
-    // Leggi la posizione della linea dal sensorBoard
-    int16_t line_position = IR_board.line();
-    
+short pidLineFollowing(short base_vel, int16_t line_position) {
     // Calcola il tempo trascorso usando uint16_t (overflow dopo 65.5s è gestibile)
-    uint16_t current_time = (uint16_t)(millis() & 0xFFFF);
+    uint16_t current_time = (uint16_t)(millis() & 0xFFFF);  
     uint16_t delta_time_ms = current_time - last_time;
     float delta_time = delta_time_ms / 1000.0;  // Converti in secondi
     

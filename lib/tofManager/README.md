@@ -6,6 +6,7 @@ Gestisce un array di sensori di distanza VL53L0X (Time-of-Flight) utilizzando in
 - Supporto per multipli sensori VL53L0X sullo stesso bus I2C.
 - Gestione tramite pin XSHUT per l'inizializzazione sequenziale degli indirizzi.
 - **Ottimizzazione RAM**: Memoria ridotta memorizzando solo la distanza come `uint16_t` invece della struttura completa di misurazione.
+- **Gestione avanzata**: I sensori sono organizzati in vettori separati per tipo e funzione, migliorando la modularità e la leggibilità del codice.
 
 ## Sensori gestiti
 Il robot utilizza i seguenti sensori (definiti in `include/robot.h`):

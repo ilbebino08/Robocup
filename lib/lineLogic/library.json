@@ -1,0 +1,12 @@
+{
+    "name": "lineLogic",
+    "version": "1.0.0",
+    "description": "RoboCup Rescue Line FSM",
+    "frameworks": ["arduino"],
+    "platforms": ["atmelavr"],
+    "build": {
+        "srcDir": ".",
+        "includeDir": ".",
+        "srcFilter": ["+<*.cpp>", "+<src/*.cpp>"]
+    }
+}

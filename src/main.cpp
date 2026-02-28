@@ -7,17 +7,15 @@
 #include "Funzioni.h"
 #include <braccio.h>
 #include <debug.h>
-#include <lineLogic.h>
 #include <tofManager.h>
+#include <RescueLineFollower.h>
 
 BottomSensor IR_board;
 Motori motori;
 MultiClickButton button(BUTTON);
 Braccio braccio;
 tofManager tof_manager;
-
-uint16_t timer = 0;  // Ridotto da long
-uint16_t lastNoLineaTime = 0;  // Ridotto da long
+RescueLineFollower lineFollower;
 
 void setup() {
     Serial.begin(115200);
@@ -58,6 +56,9 @@ void setup() {
 
     motori.stop();
 
+    lineFollower.begin();
+    debug.println("LineFollower inizializzato.");
+
     pinMode(LED_R, OUTPUT);
     pinMode(LED_G, OUTPUT);
     pinMode(LED_V, OUTPUT);
@@ -86,7 +87,7 @@ void loop() {
     }
 */
     if(!button.isPaused()) {
-        gestisciLinea(statoLinea());
+        lineFollower.update();
     }
 
 
