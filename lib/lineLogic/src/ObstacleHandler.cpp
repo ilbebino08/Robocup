@@ -16,11 +16,23 @@ extern Debug debug;
 static uint32_t _sumAntSX;
 static uint32_t _sumAntDX;
 static uint16_t _sampleCount;
+static uint8_t  _obstacleConsecutive = 0;  // contatore debounce
 
-// ═══════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════
 
 bool obstacleDetected() {
-    return tof_manager.front.getDistance() < OBSTACLE_DETECT_MM;
+    const uint16_t d = tof_manager.front.getDistance();
+    // Scarta letture invalide: 0 = errore sensore, >8000 = fuori range
+    if (d == 0 || d > 8000) {
+        _obstacleConsecutive = 0;
+        return false;
+    }
+    if (d < OBSTACLE_DETECT_MM) {
+        if (_obstacleConsecutive < 255) _obstacleConsecutive++;
+        return _obstacleConsecutive >= OBSTACLE_CONFIRM_READS;
+    }
+    _obstacleConsecutive = 0;
+    return false;
 }
 
 void obstacleHandler_enter(RobotContext& ctx) {

@@ -1,9 +1,11 @@
 #include "GreenManager.h"
 #include "../config.h"
 #include <sensorBoard.h>
+#include <debug.h>
 #include <Arduino.h>
 
 extern BottomSensor IR_board;
+extern Debug debug;
 
 // Risultato calcolato nell'ultimo update(), esposto via getEvent()
 static GreenEvent _lastEvent = GREEN_NONE;
@@ -74,8 +76,10 @@ void greenManager_update(RobotContext& ctx) {
 
     if (bothConfirmed) {
         _lastEvent = GREEN_DOUBLE;
+        LL_LOG("[GM] event=DOUBLE");
     } else if (windowExpired) {
         _lastEvent = ctx.greenConfirmedSx ? GREEN_SINGLE_SX : GREEN_SINGLE_DX;
+        LL_LOG2("[GM] event=SINGLE_", ctx.greenConfirmedSx ? "SX" : "DX");
     } else {
         _lastEvent = GREEN_WAITING;
     }

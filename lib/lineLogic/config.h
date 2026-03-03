@@ -6,11 +6,28 @@
 //  Tutte le costanti numeriche in un unico punto.
 // ═══════════════════════════════════════════════════════════════════
 
+// ── Debug ─────────────────────────────────────────────────────────
+// Attiva (1) o disattiva (0) il logging diagnostico dettagliato.
+// Disattiva in gara per risparmiare CPU e banda seriale.
+#define LL_DEBUG 1
+
+#if LL_DEBUG
+  #define LL_LOG(msg)         debug.println(msg)
+  #define LL_LOG2(a, b)       do { debug.print(a); debug.println(b); } while(0)
+  #define LL_LOG4(a,b,c,d)    do { debug.print(a); debug.print(b); debug.print(c); debug.println(d); } while(0)
+  #define LL_LOG6(a,b,c,d,e,f) do { debug.print(a); debug.print(b); debug.print(c); debug.print(d); debug.print(e); debug.println(f); } while(0)
+#else
+  #define LL_LOG(msg)         ((void)0)
+  #define LL_LOG2(a, b)       ((void)0)
+  #define LL_LOG4(a,b,c,d)    ((void)0)
+  #define LL_LOG6(a,b,c,d,e,f) ((void)0)
+#endif
+
 // ── Velocità (unità: -1023..+1023 per vel, -1750..+1750 per ang) ──
 
 // Velocità base durante il following normale.
 // Aumenta se il robot è troppo lento sulla linea, riduci se sbanda nelle curve.
-#define BASE_VEL                ((short)500)
+#define BASE_VEL                ((short)800)
 
 // Velocità di retromarcia durante il recovery della linea persa.
 // Più negativo = retromarcia più veloce. Riduci (meno negativo) se il robot
@@ -42,6 +59,10 @@
 // Distanza minima (mm) dal TOF frontale per rilevare un ostacolo.
 // Aumenta se il robot reagisce troppo tardi, riduci se frena per oggetti lontani.
 #define OBSTACLE_DETECT_MM      ((uint16_t)120)
+
+// Numero di letture consecutive valide sotto OBSTACLE_DETECT_MM
+// prima di dichiarare "ostacolo". Evita falsi positivi da spike del TOF.
+#define OBSTACLE_CONFIRM_READS  ((uint8_t)3)
 
 // Distanza minima laterale (mm) perché un lato sia considerato "libero"
 // durante la scelta del lato di aggiramento.
@@ -137,9 +158,9 @@
 // Aumenta per girare più stretto, riduci se il robot si destabilizza.
 #define TURN_RIGHT_ANG          ((short)1400)
 
-// Velocità di avanzamento lento durante la fase di svolta.
-// Aumenta se il robot non avanza abbastanza durante la curva.
-#define TURN_SLOW_VEL           ((short)200)
+// Velocità di avanzamento durante la fase di svolta.
+// Usa la stessa velocità base per evitare che il robot si blocchi nella curva.
+#define TURN_SLOW_VEL           BASE_VEL
 
 // ── Angolo sterzata aggiramento ostacolo ─────────────────────────
 

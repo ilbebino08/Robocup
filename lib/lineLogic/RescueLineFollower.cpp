@@ -20,6 +20,7 @@ void RescueLineFollower::begin() {
     memset(&_ctx, 0, sizeof(_ctx));
     _ctx.state = STATE_FOLLOWING;
     resetPID();
+    LL_LOG("[LL] begin() -> FOLLOWING");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -27,8 +28,7 @@ void RescueLineFollower::begin() {
 // ═══════════════════════════════════════════════════════════════════
 
 void RescueLineFollower::_transitionTo(FSMState newState, const char* label) {
-    debug.print("-> ");
-    debug.println(label);
+    LL_LOG2("[LL] -> ", label);
     _ctx.state = newState;
     _ctx.stateStartMs = millis();
     if (newState == STATE_FOLLOWING) {
@@ -46,7 +46,7 @@ void RescueLineFollower::_handleTurn(bool isLeft) {
     _ctx.lastTurnWasLeft = isLeft;
     greenManager_reset(_ctx);
     greenManager_setIgnoreAfterTurn(_ctx, isLeft);
-    debug.println(isLeft ? "-> TURN_LEFT" : "-> TURN_RIGHT");
+    LL_LOG(isLeft ? "[LL] -> TURN_LEFT" : "[LL] -> TURN_RIGHT");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -56,35 +56,51 @@ void RescueLineFollower::_handleTurn(bool isLeft) {
 void RescueLineFollower::_handleFollowing(int16_t pos, uint32_t now) {
     const GreenEvent ge = greenManager_getEvent(_ctx);
 
+    // Log periodico ogni ~500ms per non floodare
+    static uint32_t _lastLogMs = 0;
+    if (LL_DEBUG && (now - _lastLogMs) >= 500) {
+        _lastLogMs = now;
+        LL_LOG6("[FL] pos=", (int)pos, " ge=", (int)ge,
+                " tof=", (int)tof_manager.front.getDistance());
+    }
+
     // 1. Ostacolo (massima priorità)
     if (obstacleDetected()) {
+        LL_LOG2("[FL] OBSTACLE tof=", (int)tof_manager.front.getDistance());
         obstacleHandler_enter(_ctx);
         return;
     }
 
     // 2. Doppio verde → U-turn
     if (ge == GREEN_DOUBLE) {
+        LL_LOG("[FL] GREEN_DOUBLE -> UTURN");
         uTurnHandler_enter(_ctx);
         return;
     }
 
     // 3. Verde singolo SX
     if (ge == GREEN_SINGLE_SX) {
+        LL_LOG("[FL] GREEN_SX -> TURN_LEFT");
         _handleTurn(true);
         return;
     }
 
     // 4. Verde singolo DX
     if (ge == GREEN_SINGLE_DX) {
+        LL_LOG("[FL] GREEN_DX -> TURN_RIGHT");
         _handleTurn(false);
         return;
     }
 
     // 5. Verde WAITING → non fare nulla di speciale, continua PID
     //    (la finestra doppio-verde è ancora aperta)
+    if (ge == GREEN_WAITING) {
+        LL_LOG("[FL] GREEN_WAITING");
+    }
 
     // 6. Incrocio (solo se nessun verde attivo)
     if (ge == GREEN_NONE && intersectionDetected(_ctx, now)) {
+        LL_LOG("[FL] INTERSECTION detected");
         intersectionHandler_enter(_ctx);
         return;
     }
@@ -94,7 +110,9 @@ void RescueLineFollower::_handleFollowing(int16_t pos, uint32_t now) {
     if (absPos >= 1750) {
         if (_ctx.lineLostStartMs == 0) {
             _ctx.lineLostStartMs = now;
+            LL_LOG2("[FL] line frozen pos=", (int)pos);
         } else if ((now - _ctx.lineLostStartMs) >= LINE_LOST_CONFIRM_MS) {
+            LL_LOG("[FL] LINE LOST -> RECOVERY");
             lineRecovery_enter(_ctx);
             return;
         }
@@ -124,8 +142,19 @@ void RescueLineFollower::update() {
     const int16_t pos = IR_board.line();
 
     // Aggiorna lastLinePos solo se la scheda non ha congelato il valore
-    if (pos > -1750 && pos < 1750) {
+    // e NON siamo in recovery (per non sovrascrivere la direzione)
+    if (pos > -1750 && pos < 1750 &&
+        _ctx.state != STATE_LINE_LOST_REVERSE &&
+        _ctx.state != STATE_LINE_LOST_CENTER &&
+        _ctx.state != STATE_LINE_LOST_FORWARD) {
         _ctx.lastLinePos = pos;
+    }
+
+    // Log stato corrente ogni ~1s
+    static uint32_t _lastStateLog = 0;
+    if (LL_DEBUG && (now - _lastStateLog) >= 1000) {
+        _lastStateLog = now;
+        LL_LOG4("[LL] state=", (int)_ctx.state, " pos=", (int)pos);
     }
 
     // 4-5. Smista al gestore corretto
@@ -142,11 +171,16 @@ void RescueLineFollower::update() {
         const short ang = isLeft ? TURN_LEFT_ANG : TURN_RIGHT_ANG;
         motori.muovi(TURN_SLOW_VEL, ang);
 
+        LL_LOG6("[TN] ", isLeft ? "L" : "R",
+                " pos=", (int)pos,
+                " t=", (int)(now - _ctx.stateStartMs));
+
         // Completamento: line() centrata dopo che il segno è cambiato
         const int16_t absP = (pos < 0) ? -pos : pos;
         if (absP < TURN_CENTER_THRESHOLD &&
-            (now - _ctx.stateStartMs) > 200) {  // min 200ms per evitare exit prematura
+            (now - _ctx.stateStartMs) > 200) {
             _transitionTo(STATE_FOLLOWING, "FOLLOWING (turn ok)");
+            break;
         }
 
         // Timeout

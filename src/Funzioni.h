@@ -15,10 +15,12 @@
 #include <sensorBoard.h>
 #include <robot.h>
 #include <debug.h>
+#include <RescueLineFollower.h>
 
 extern BottomSensor IR_board;
 extern Motori motori;
 extern Braccio braccio;
+extern RescueLineFollower lineFollower;
 
 
 /**
@@ -29,6 +31,7 @@ void singoloClick() {
     motori.stop();
     braccio.riposo();
     resetPID();
+    lineFollower.onRobotReplaced();
 }
 
 /**
