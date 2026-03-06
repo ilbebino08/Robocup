@@ -27,7 +27,7 @@
 
 // Velocità base durante il following normale.
 // Aumenta se il robot è troppo lento sulla linea, riduci se sbanda nelle curve.
-#define BASE_VEL                ((short)800)
+#define BASE_VEL                ((short)1000)
 
 // Velocità di retromarcia durante il recovery della linea persa.
 // Più negativo = retromarcia più veloce. Riduci (meno negativo) se il robot
@@ -83,9 +83,17 @@
 // Aumenta se i gap sono lunghi e il robot non arretra abbastanza.
 #define REVERSE_SEARCH_MS       ((uint16_t)600)
 
+// Tempo massimo (ms) di avanzamento per attraversare un gap (interruzione linea).
+// Se non trova la linea entro questo tempo, torna indietro. ~80cm a SEARCH_VEL.
+#define GAP_CROSS_MS            ((uint16_t)1500)
+
+// Retromarcia iniziale (ms) per verificare se era una svolta non completata.
+// Se trova la linea in questo tempo → torna a FOLLOWING, altrimenti avanza nel gap.
+#define GAP_CHECK_BACK_MS       ((uint16_t)300)
+
 // Timeout totale (ms) per l'intera sequenza di recovery (REVERSE+CENTER+FORWARD).
 // Se scade il robot si ferma. Aumenta su piste con gap molto lunghi.
-#define SEARCH_TOTAL_MS         ((uint16_t)3000)
+#define SEARCH_TOTAL_MS         ((uint16_t)4000)
 
 // Timeout (ms) per una svolta a 90° (verde singolo).
 // Aumenta se il robot non completa la svolta in tempo.

@@ -38,8 +38,7 @@ void intersectionHandler_update(RobotContext& ctx) {
     const int16_t pos = IR_board.line();
 
     // Attraversa l'incrocio a velocità ridotta usando il PID
-    const short ang = pidLineFollowing(CROSS_VEL, pos);
-    motori.muovi(CROSS_VEL, ang);
+    pidLineFollowing(CROSS_VEL);
 
     // Uscita: line() != 0 stabilmente → linea ritrovata
     if (pos != 0) {

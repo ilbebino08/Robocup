@@ -116,13 +116,25 @@ void RescueLineFollower::_handleFollowing(int16_t pos, uint32_t now) {
             lineRecovery_enter(_ctx);
             return;
         }
+        // Ancora nel debounce: va dritto invece di sterzare a fondo
+        motori.muovi(BASE_VEL, 0);
+        return;
     } else {
         _ctx.lineLostStartMs = 0;
     }
 
-    // 8. Following normale
-    const short ang = pidLineFollowing(BASE_VEL, pos);
-    motori.muovi(BASE_VEL, ang);
+    // 8. Following normale — legge pos fresca e la passa direttamente al PID
+    {
+        const int16_t freshPos = IR_board.line();
+        if (freshPos == -1750 || freshPos == 1750) {
+            // Linea sparita nell'ultimo istante → entra subito in recovery
+            LL_LOG("[FL] LINE LOST (fresh) -> RECOVERY");
+            lineRecovery_enter(_ctx);
+            return;
+        }
+        pidLineFollowing(BASE_VEL, freshPos);
+    }
+    
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -204,7 +216,7 @@ void RescueLineFollower::update() {
     case STATE_LINE_LOST_REVERSE:
     case STATE_LINE_LOST_CENTER:
     case STATE_LINE_LOST_FORWARD:
-        lineRecovery_update(_ctx);
+        lineRecovery_update(_ctx, pos);
         break;
 
     // ── Ostacolo (4 sotto-stati) ────────────────────────────────

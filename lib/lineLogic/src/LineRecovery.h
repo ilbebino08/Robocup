@@ -8,6 +8,6 @@
 // ═══════════════════════════════════════════════════════════════════
 
 void lineRecovery_enter(RobotContext& ctx);
-void lineRecovery_update(RobotContext& ctx);
+void lineRecovery_update(RobotContext& ctx, int16_t pos);
 
 #endif

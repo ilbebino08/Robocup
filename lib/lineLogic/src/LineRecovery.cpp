@@ -11,22 +11,39 @@ extern Motori motori;
 extern Debug debug;
 
 // ═══════════════════════════════════════════════════════════════════
-//  Variabili locali al modulo
+//  Interruzione di linea (gap) — regolamento RoboCup Rescue Line
+//  Il robot avanza dritto per attraversare il salto. Se non trova
+//  la linea entro GAP_CROSS_MS, torna indietro finché la rivede.
 // ═══════════════════════════════════════════════════════════════════
-static uint32_t _recoveryOriginMs;
-static bool     _curveDetected;     // true se un sensore esterno ha visto la linea
-static bool     _curveIsLeft;       // true = curva a sinistra
+enum LocalRecoveryState {
+    LR_CONTROLLA_INDIETRO = 0, // retromarcia breve: svolta non completata?
+    LR_AVANZA,               // attraversa il salto andando avanti
+    LR_CERCA_LINEA,          // torna indietro finché non rivede la linea
+    LR_CENTRA                // sterza sul posto finché la linea è centrata
+};
 
-void lineRecovery_enter(RobotContext& ctx) {
-    ctx.state = STATE_LINE_LOST_REVERSE;
-    ctx.stateStartMs = millis();
-    _recoveryOriginMs = millis();
-    _curveDetected = false;
-    _curveIsLeft   = false;
-    LL_LOG2("[RV] enter lastPos=", (int)ctx.lastLinePos);
+static LocalRecoveryState _lrState;
+static uint32_t           _lrPhaseStartMs;
+static uint32_t           _recoveryOriginMs;
+
+static void _exitToFollowing(RobotContext& ctx, uint32_t now, const char* msg) {
+    resetPID();
+    ctx.lineLostStartMs = 0;
+    ctx.state        = STATE_FOLLOWING;
+    ctx.stateStartMs = now;
+    LL_LOG(msg);
 }
 
-void lineRecovery_update(RobotContext& ctx) {
+void lineRecovery_enter(RobotContext& ctx) {
+    ctx.state         = STATE_LINE_LOST_REVERSE;  // segnala recovery in corso
+    ctx.stateStartMs  = millis();
+    _recoveryOriginMs = millis();
+    _lrPhaseStartMs   = millis();
+    _lrState          = LR_CONTROLLA_INDIETRO;
+    LL_LOG("[RV] enter -> CONTROLLA_INDIETRO");
+}
+
+void lineRecovery_update(RobotContext& ctx, int16_t pos) {
     const uint32_t now = millis();
 
     // ── Timeout assoluto globale ────────────────────────────────
@@ -36,68 +53,81 @@ void lineRecovery_update(RobotContext& ctx) {
         return;
     }
 
-    switch (ctx.state) {
+    switch (_lrState) {
 
-    // ── REVERSE: retromarcia lenta, guarda sensori esterni ──────
-    case STATE_LINE_LOST_REVERSE: {
-        motori.muovi(REVERSE_VEL, 0);  // indietro dritto, piano
+    // ── CONTROLLA_INDIETRO: retromarcia breve, poi verifica se c'è la linea ──
+    case LR_CONTROLLA_INDIETRO: {
+        LL_LOG2("[CI] pos=", (int)pos);
+        if ((now - _lrPhaseStartMs) < GAP_CHECK_BACK_MS) {
+            // Muovi sempre indietro per l'intera durata, senza controllare pos
+            motori.muovi(REVERSE_VEL, 0);
+        } else {
+            // Solo dopo aver arretrato: controlla se c'è la linea
+            if (pos > -TURN_CENTER_THRESHOLD && pos < TURN_CENTER_THRESHOLD) {
+                _exitToFollowing(ctx, now, "[RV] linea dietro (svolta) -> FOLLOWING");
+                return;
+            }
+            LL_LOG("[RV] nessuna linea dietro -> AVANZA");
+            _lrState        = LR_AVANZA;
+            _lrPhaseStartMs = now;
+        }
+        break;
+    }
 
-        // Leggi i sensori più esterni (0 = tutto a SX, 7 = tutto a DX)
-        const uint16_t* vals = IR_board.utils.val_sensor();
-        const bool leftEdge  = (vals[0] > 500);
-        const bool rightEdge = (vals[7] > 500);
+    // ── AVANZA: attraversa il salto dritto ──────────────────────
+    case LR_AVANZA: {
+        LL_LOG2("[AV] pos=", (int)pos);
+        // pos != ±1750 → linea reale trovata (come il branch main)
+        if (pos != -1750 && pos != 1750) {
+            _exitToFollowing(ctx, now, "[RV] linea ritrovata -> FOLLOWING");
+            return;
+        }
+        // Timeout avanzamento → torna indietro a cercare la linea
+        if ((now - _lrPhaseStartMs) >= GAP_CROSS_MS) {
+            LL_LOG("[RV] gap timeout -> CERCA_LINEA");
+            _lrState        = LR_CERCA_LINEA;
+            _lrPhaseStartMs = now;
+        } else {
+            motori.muovi(BASE_VEL, 0);
+        }
+        break;
+    }
 
-        LL_LOG6("[RV] L=", (int)vals[0], " R=", (int)vals[7],
-                " t=", (int)(now - ctx.stateStartMs));
+    // ── CERCA_LINEA: retromarcia finché non rivede la linea ──────
+    case LR_CERCA_LINEA: {
+        LL_LOG2("[CL] pos=", (int)pos);
+        // pos != ±1750 → linea trovata
+        if (pos != -1750 && pos != 1750) {
+            if (pos >= -TURN_CENTER_THRESHOLD && pos <= TURN_CENTER_THRESHOLD) {
+                _exitToFollowing(ctx, now, "[RV] linea centrata -> FOLLOWING");
+                return;
+            } else {
+                LL_LOG2("[RV] linea trovata pos=", (int)pos);
+                LL_LOG("[RV] -> CENTRA");
+                _lrState = LR_CENTRA;
+                _lrPhaseStartMs = now;
+            }
+        } else {
+            motori.muovi(REVERSE_VEL, 0);
+        }
+        break;
+    }
 
-        if (leftEdge || rightEdge) {
-            // Sensore esterno ha trovato la linea → è una curva a gomito
-            _curveDetected = true;
-            _curveIsLeft   = leftEdge;
-            ctx.state = STATE_LINE_LOST_CENTER;
-            ctx.stateStartMs = now;
-            LL_LOG2("[RV] curva trovata lato=", _curveIsLeft ? "SX" : "DX");
+    // ── CENTRA: sterza sul posto finché la linea è centrata ───────
+    case LR_CENTRA: {
+        LL_LOG2("[CT] pos=", (int)pos);
+        // Linea persa durante centraggio: torna a cercarla
+        if (pos == -1750 || pos == 1750) {
+            _lrState = LR_CERCA_LINEA;
             break;
         }
-
-        // Timeout retromarcia → sterza nella direzione dell'ultima pos nota
-        if ((now - ctx.stateStartMs) >= REVERSE_SEARCH_MS) {
-            _curveDetected = true;
-            _curveIsLeft   = (ctx.lastLinePos < 0);
-            ctx.state = STATE_LINE_LOST_CENTER;
-            ctx.stateStartMs = now;
-            LL_LOG("[RV] timeout -> CENTER");
+        if (pos >= -TURN_CENTER_THRESHOLD && pos <= TURN_CENTER_THRESHOLD) {
+            _exitToFollowing(ctx, now, "[CT] centrato -> FOLLOWING");
+            return;
         }
-        break;
-    }
-
-    // ── CENTER: sterza verso il lato della curva fino a checkLinea ──
-    case STATE_LINE_LOST_CENTER: {
-        // Sterza verso il lato dove il sensore esterno ha visto la linea
-        const short steerAng = _curveIsLeft ? TURN_LEFT_ANG : TURN_RIGHT_ANG;
-        motori.muovi(SEARCH_VEL, steerAng);
-
-        const int16_t pos = IR_board.line();
-        LL_LOG4("[CT] pos=", (int)pos, " steer=", (int)steerAng);
-
-        // Linea ritrovata al centro → esci dal recovery
-        if (IR_board.checkLinea() && pos > -1750 && pos < 1750 &&
-            ((pos < 0 ? -pos : pos) < CENTER_THRESHOLD)) {
-            resetPID();
-            ctx.lineLostStartMs = 0;
-            ctx.state = STATE_FOLLOWING;
-            ctx.stateStartMs = now;
-            LL_LOG("[CT] -> FOLLOWING (recovery ok)");
-        }
-        break;
-    }
-
-    // ── FORWARD: non usato in questo schema, fallback ───────────
-    case STATE_LINE_LOST_FORWARD: {
-        resetPID();
-        ctx.lineLostStartMs = 0;
-        ctx.state = STATE_FOLLOWING;
-        ctx.stateStartMs = now;
+        // Sterza verso il centro senza avanzare
+        const short steer = (pos < 0) ? TURN_RIGHT_ANG : TURN_LEFT_ANG;
+        motori.muovi(0, steer);
         break;
     }
 

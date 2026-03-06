@@ -66,10 +66,10 @@ void setup() {
 
 void loop() {
     button.update();
-/*
+
     // Controllo seriale Bluetooth
-    if(Serial3.available()) {
-        int valore = Serial3.read();
+    if(Serial.available()) {
+        int valore = Serial.read();
         if(valore == '1') {
             debug.println("Ricevuto comando 1");
             IR_board.utils.calibration();
@@ -85,7 +85,7 @@ void loop() {
             IR_board.utils.greenSxCalibration();
         }
     }
-*/
+
     if(!button.isPaused()) {
         lineFollower.update();
     }
