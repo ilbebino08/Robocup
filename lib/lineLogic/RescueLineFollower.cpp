@@ -42,7 +42,8 @@ void RescueLineFollower::_transitionTo(FSMState newState, const char* label) {
 //  Gestione svolta 90° (verde singolo)
 // ═══════════════════════════════════════════════════════════════════
 
-void RescueLineFollower::_handleTurn(bool isLeft) {
+void RescueLineFollower
+::_handleTurn(bool isLeft) {
     if (_ctx.state == STATE_TURN_LEFT || _ctx.state == STATE_TURN_RIGHT) return; // Non retriggerare
     _ctx.state = isLeft ? STATE_TURN_LEFT : STATE_TURN_RIGHT;
     _ctx.stateStartMs = millis();
