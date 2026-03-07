@@ -6,10 +6,12 @@
 #include <followLine.h>
 #include <debug.h>
 #include <Arduino.h>
+#include <MultiClickButton.h>
 
 extern BottomSensor IR_board;
 extern Motori motori;
 extern Debug debug;
+extern MultiClickButton button;
 
 // Segno della posizione linea all'ingresso (locale allo stato, non in ctx)
 static int8_t _entrySign;
@@ -27,38 +29,45 @@ void uTurnHandler_enter(RobotContext& ctx) {
 }
 
 void uTurnHandler_update(RobotContext& ctx) {
-    const uint32_t now = millis();
+    // Ruota sul posto all'infinito finché non troviamo la linea (bloccante)
+    while (true) {
+        button.update();
+        if (button.isPaused()) {
+            motori.stop();
+            ctx.state = STATE_FOLLOWING;
+            debug.println("INTERRUPT! (uturn)");
+            return;
+        }
 
-    // Timeout
-    if ((now - ctx.stateStartMs) >= UTURN_TIMEOUT_MS) {
-        motori.stop();
-        greenManager_reset(ctx);
-        resetPID();
-        ctx.state = STATE_FOLLOWING;
-        ctx.stateStartMs = now;
-        debug.println("-> FOLLOWING (uturn timeout)");
-        return;
-    }
+        uint32_t current_now = millis();
+        
+        // Continua a dare il comando ai motori
+        motori.muovi(0, UTURN_ANG);
 
-    // Ruota sul posto
-    motori.muovi(0, UTURN_ANG);
+        // Monitora checkLinea(): fermati quando il sensore rileva fisicamente la linea
+        // Necessario chiamarlo per aggiornare i bit di status I2C costantemente
+        IR_board.line(); 
+        const bool lineDetected = IR_board.checkLinea();
 
-    // Monitora line(): fermati quando il segno si è invertito
-    // E il robot è sufficientemente centrato
-    const int16_t pos = IR_board.line();
-    int8_t curSign = 0;
-    if (pos > 0)      curSign =  1;
-    else if (pos < 0) curSign = -1;
+        if (lineDetected && (int32_t)(current_now - ctx.stateStartMs) > 200) {  
+            // U-turn completata
+            greenManager_reset(ctx);
+            resetPID();
+            ctx.state = STATE_FOLLOWING;
+            ctx.stateStartMs = current_now;
+            debug.println("-> FOLLOWING (uturn ok line found)");
+            break;
+        }
 
-    const int16_t absPos = (pos < 0) ? -pos : pos;
-
-    if (curSign != 0 && curSign != _entrySign &&
-        absPos < TURN_CENTER_THRESHOLD) {
-        // U-turn completata
-        greenManager_reset(ctx);
-        resetPID();
-        ctx.state = STATE_FOLLOWING;
-        ctx.stateStartMs = now;
-        debug.println("-> FOLLOWING (uturn ok)");
+        // Timeout d'emergenza
+        if ((int32_t)(current_now - ctx.stateStartMs) >= (int32_t)UTURN_TIMEOUT_MS) {
+            motori.stop();
+            greenManager_reset(ctx);
+            resetPID();
+            ctx.state = STATE_FOLLOWING;
+            ctx.stateStartMs = current_now;
+            debug.println("-> FOLLOWING (uturn timeout)");
+            break;
+        }
     }
 }

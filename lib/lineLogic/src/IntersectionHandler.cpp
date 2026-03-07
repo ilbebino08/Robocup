@@ -19,7 +19,7 @@ bool intersectionDetected(RobotContext& ctx, uint32_t now) {
         if (ctx.crossZeroStartMs == 0) {
             ctx.crossZeroStartMs = now;
         }
-        return (now - ctx.crossZeroStartMs) >= CROSS_CONFIRM_MS;
+        return (int32_t)(now - ctx.crossZeroStartMs) >= (int32_t)CROSS_CONFIRM_MS;
     }
 
     // Non più a zero → reset contatore

@@ -69,7 +69,7 @@ void obstacleHandler_update(RobotContext& ctx) {
         _sumAntDX += tof_manager.antDX.getDistance();
         _sampleCount++;
 
-        if ((now - ctx.stateStartMs) >= OBSTACLE_BACK_MS) {
+        if ((int32_t)(now - ctx.stateStartMs) >= (int32_t)OBSTACLE_BACK_MS) {
             ctx.state = STATE_OBSTACLE_CHOOSE_SIDE;
             ctx.stateStartMs = now;
             debug.println("-> OBSTACLE_CHOOSE_SIDE");
@@ -121,7 +121,7 @@ void obstacleHandler_update(RobotContext& ctx) {
         }
 
         // Timeout
-        if ((now - ctx.stateStartMs) >= OBSTACLE_BYPASS_MS) {
+        if ((int32_t)(now - ctx.stateStartMs) >= (int32_t)OBSTACLE_BYPASS_MS) {
             ctx.state = STATE_OBSTACLE_REALIGN;
             ctx.stateStartMs = now;
             debug.println("-> OBSTACLE_REALIGN (timeout)");

@@ -6,10 +6,12 @@
 #include <debug.h>
 #include <Arduino.h>
 #include <string.h>  // memset
+#include <MultiClickButton.h>
 
 extern BottomSensor IR_board;
 extern Motori motori;
 extern tofManager tof_manager;
+extern MultiClickButton button;
 extern Debug debug;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -41,11 +43,11 @@ void RescueLineFollower::_transitionTo(FSMState newState, const char* label) {
 // ═══════════════════════════════════════════════════════════════════
 
 void RescueLineFollower::_handleTurn(bool isLeft) {
+    if (_ctx.state == STATE_TURN_LEFT || _ctx.state == STATE_TURN_RIGHT) return; // Non retriggerare
     _ctx.state = isLeft ? STATE_TURN_LEFT : STATE_TURN_RIGHT;
     _ctx.stateStartMs = millis();
     _ctx.lastTurnWasLeft = isLeft;
     greenManager_reset(_ctx);
-    greenManager_setIgnoreAfterTurn(_ctx, isLeft);
     LL_LOG(isLeft ? "[LL] -> TURN_LEFT" : "[LL] -> TURN_RIGHT");
 }
 
@@ -58,45 +60,14 @@ void RescueLineFollower::_handleFollowing(int16_t pos, uint32_t now) {
 
     // Log periodico ogni ~500ms per non floodare
     static uint32_t _lastLogMs = 0;
-    if (LL_DEBUG && (now - _lastLogMs) >= 500) {
+    if (LL_DEBUG && (int32_t)(now - _lastLogMs) >= 500) {
         _lastLogMs = now;
         LL_LOG6("[FL] pos=", (int)pos, " ge=", (int)ge,
                 " tof=", (int)tof_manager.front.getDistance());
     }
 
-    // 1. Ostacolo (massima priorità)
-    if (obstacleDetected()) {
-        LL_LOG2("[FL] OBSTACLE tof=", (int)tof_manager.front.getDistance());
-        obstacleHandler_enter(_ctx);
-        return;
-    }
-
-    // 2. Doppio verde → U-turn
-    if (ge == GREEN_DOUBLE) {
-        LL_LOG("[FL] GREEN_DOUBLE -> UTURN");
-        uTurnHandler_enter(_ctx);
-        return;
-    }
-
-    // 3. Verde singolo SX
-    if (ge == GREEN_SINGLE_SX) {
-        LL_LOG("[FL] GREEN_SX -> TURN_LEFT");
-        _handleTurn(true);
-        return;
-    }
-
-    // 4. Verde singolo DX
-    if (ge == GREEN_SINGLE_DX) {
-        LL_LOG("[FL] GREEN_DX -> TURN_RIGHT");
-        _handleTurn(false);
-        return;
-    }
-
-    // 5. Verde WAITING → non fare nulla di speciale, continua PID
-    //    (la finestra doppio-verde è ancora aperta)
-    if (ge == GREEN_WAITING) {
-        LL_LOG("[FL] GREEN_WAITING");
-    }
+    // Nota: Ostacolo e Verdi (GREEN_DOUBLE, GREEN_SINGLE, GREEN_WAITING) 
+    // sono ora gestiti a monte in update() come priorità assoluta.
 
     // 6. Incrocio (solo se nessun verde attivo)
     if (ge == GREEN_NONE && intersectionDetected(_ctx, now)) {
@@ -111,7 +82,7 @@ void RescueLineFollower::_handleFollowing(int16_t pos, uint32_t now) {
         if (_ctx.lineLostStartMs == 0) {
             _ctx.lineLostStartMs = now;
             LL_LOG2("[FL] line frozen pos=", (int)pos);
-        } else if ((now - _ctx.lineLostStartMs) >= LINE_LOST_CONFIRM_MS) {
+        } else if ((int32_t)(now - _ctx.lineLostStartMs) >= (int32_t)LINE_LOST_CONFIRM_MS) {
             LL_LOG("[FL] LINE LOST -> RECOVERY");
             lineRecovery_enter(_ctx);
             return;
@@ -164,12 +135,60 @@ void RescueLineFollower::update() {
 
     // Log stato corrente ogni ~1s
     static uint32_t _lastStateLog = 0;
-    if (LL_DEBUG && (now - _lastStateLog) >= 1000) {
+    if (LL_DEBUG && (int32_t)(now - _lastStateLog) >= 1000) {
         _lastStateLog = now;
         LL_LOG4("[LL] state=", (int)_ctx.state, " pos=", (int)pos);
     }
 
-    // 4-5. Smista al gestore corretto
+    // 4. Gestione prioritaria Ostacoli e Verdi
+    if (_ctx.state == STATE_FOLLOWING || 
+        _ctx.state == STATE_LINE_LOST_REVERSE || 
+        _ctx.state == STATE_LINE_LOST_CENTER || 
+        _ctx.state == STATE_LINE_LOST_FORWARD) {
+        
+        // 4.1 Ostacolo (massima priorità)
+        if (obstacleDetected()) {
+            LL_LOG2("[FL] OBSTACLE tof=", (int)tof_manager.front.getDistance());
+            obstacleHandler_enter(_ctx);
+            return;
+        }
+
+        const GreenEvent ge = greenManager_getEvent(_ctx);
+        
+        // 4.2 Doppio verde → U-turn
+        if (ge == GREEN_DOUBLE) {
+            LL_LOG("[FL] GREEN_DOUBLE -> UTURN");
+            uTurnHandler_enter(_ctx);
+            return;
+        }
+
+        // 4.3 Verde singolo SX
+        if (ge == GREEN_SINGLE_SX) {
+            LL_LOG("[FL] GREEN_SX -> TURN_LEFT");
+            // Se eravamo in recovery o ostacolo, va resettato lo stato
+            if (_ctx.state != STATE_FOLLOWING) resetPID();
+            _handleTurn(true);
+            return;
+        }
+
+        // 4.4 Verde singolo DX
+        if (ge == GREEN_SINGLE_DX) {
+            LL_LOG("[FL] GREEN_DX -> TURN_RIGHT");
+            // Se eravamo in recovery o ostacolo, va resettato lo stato
+            if (_ctx.state != STATE_FOLLOWING) resetPID();
+            _handleTurn(false);
+            return;
+        }
+
+        // 4.5 Verde WAITING → ferma i motori per attendere eventuale secondo verde senza superarlo
+        if (ge == GREEN_WAITING) {
+            LL_LOG("[FL] GREEN_WAITING -> motori fermi attesa");
+            motori.stop();
+            return;
+        }
+    }
+
+    // 5. Smista al gestore corretto
     switch (_ctx.state) {
 
     case STATE_FOLLOWING:
@@ -183,21 +202,37 @@ void RescueLineFollower::update() {
         const short ang = isLeft ? TURN_LEFT_ANG : TURN_RIGHT_ANG;
         motori.muovi(TURN_SLOW_VEL, ang);
 
-        LL_LOG6("[TN] ", isLeft ? "L" : "R",
-                " pos=", (int)pos,
-                " t=", (int)(now - _ctx.stateStartMs));
+        LL_LOG2("[TN] BLOCKING TURN START ", isLeft ? "L" : "R");
 
-        // Completamento: line() centrata dopo che il segno è cambiato
-        const int16_t absP = (pos < 0) ? -pos : pos;
-        if (absP < TURN_CENTER_THRESHOLD &&
-            (now - _ctx.stateStartMs) > 200) {
-            _transitionTo(STATE_FOLLOWING, "FOLLOWING (turn ok)");
-            break;
-        }
+        while(true) {
+            button.update();
+            if (button.isPaused()) {
+                motori.stop();
+                _transitionTo(STATE_FOLLOWING, "INTERRUPT");
+                return; 
+            }
 
-        // Timeout
-        if ((now - _ctx.stateStartMs) >= TURN_TIMEOUT_MS) {
-            _transitionTo(STATE_FOLLOWING, "FOLLOWING (turn timeout)");
+            uint32_t current_now = millis();
+            
+            // Lettura velocissima (bloccante e dedicata solo alla curva)
+            IR_board.line();
+            bool lineDetected = IR_board.checkLinea();
+            
+            // Fuga dalla linea originale
+            if (lineDetected && (int32_t)(current_now - _ctx.stateStartMs) > 150) {
+                greenManager_setIgnoreAfterTurn(_ctx, isLeft);
+                LL_LOG("[TN] turn ok line found!");
+                _transitionTo(STATE_FOLLOWING, "FOLLOWING (turn ok)");
+                break;
+            }
+
+            // Timeout d'emergenza
+            if ((int32_t)(current_now - _ctx.stateStartMs) >= (int32_t)TURN_TIMEOUT_MS) {
+                greenManager_setIgnoreAfterTurn(_ctx, isLeft);
+                LL_LOG("[TN] turn timeout!");
+                _transitionTo(STATE_FOLLOWING, "FOLLOWING (turn timeout)");
+                break;
+            }
         }
         break;
     }

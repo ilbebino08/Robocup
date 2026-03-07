@@ -15,21 +15,24 @@ void greenManager_update(RobotContext& ctx) {
     const bool rawSx = IR_board.checkGreenSx();
     const bool rawDx = IR_board.checkGreenDx();
 
-    // ─── 2. Aggiorna contatori (azzeramento immediato) ──────────
+    // ─── 2. Aggiorna contatori (debounce in diminuzione) ──────────
     if (rawSx) {
         if (ctx.greenCntSx < 255) ctx.greenCntSx++;
     } else {
-        ctx.greenCntSx = 0;
+        if (ctx.greenCntSx > 0) ctx.greenCntSx--;
     }
 
     if (rawDx) {
         if (ctx.greenCntDx < 255) ctx.greenCntDx++;
     } else {
-        ctx.greenCntDx = 0;
+        if (ctx.greenCntDx > 0) ctx.greenCntDx--;
     }
 
     // ─── 3. Gestisci flag ignore post-svolta ────────────────────
-    //   Il flag si rimuove solo quando il verde fisico è sparito
+    // Ignora anche in base al timer post-svolta
+    const bool isInPostTurnTimeout = ((int32_t)(millis() - ctx.postTurnIgnoreMs) < (int32_t)POST_TURN_IGNORE_MS);
+
+    //   Il flag fisico si rimuove solo quando il verde fisico è sparito
     if (ctx.ignoreSxUntilClear && !rawSx) {
         ctx.ignoreSxUntilClear = false;
     }
@@ -38,7 +41,7 @@ void greenManager_update(RobotContext& ctx) {
     }
 
     // ─── 4. Aggiorna greenConfirmed ─────────────────────────────
-    if (!ctx.ignoreSxUntilClear && ctx.greenCntSx >= GREEN_CONFIRM_READS) {
+    if (!ctx.ignoreSxUntilClear && !isInPostTurnTimeout && ctx.greenCntSx >= GREEN_CONFIRM_READS) {
         if (!ctx.greenConfirmedSx) {
             ctx.greenConfirmedSx = true;
             if (ctx.firstGreenConfMs == 0) {
@@ -50,7 +53,7 @@ void greenManager_update(RobotContext& ctx) {
         ctx.greenConfirmedSx = false;
     }
 
-    if (!ctx.ignoreDxUntilClear && ctx.greenCntDx >= GREEN_CONFIRM_READS) {
+    if (!ctx.ignoreDxUntilClear && !isInPostTurnTimeout && ctx.greenCntDx >= GREEN_CONFIRM_READS) {
         if (!ctx.greenConfirmedDx) {
             ctx.greenConfirmedDx = true;
             if (ctx.firstGreenConfMs == 0) {
@@ -72,7 +75,7 @@ void greenManager_update(RobotContext& ctx) {
 
     const bool bothConfirmed = ctx.greenConfirmedSx && ctx.greenConfirmedDx;
     const bool windowExpired =
-        (millis() - ctx.firstGreenConfMs) >= GREEN_DOUBLE_WINDOW_MS;
+        ((int32_t)(millis() - ctx.firstGreenConfMs) >= (int32_t)GREEN_DOUBLE_WINDOW_MS);
 
     if (bothConfirmed) {
         _lastEvent = GREEN_DOUBLE;
@@ -105,4 +108,9 @@ void greenManager_setIgnoreAfterTurn(RobotContext& ctx, bool wasTurnLeft) {
         ctx.ignoreDxUntilClear = true;
     }
     ctx.postTurnIgnoreMs = millis();
+    
+    // Essenziale: forziamo il reset dei contatori greenManager, 
+    // altrimenti le variabili "sporche" di prima della curva
+    // rimarranno attive e faranno ri-flaggare la curva immediatamente
+    greenManager_reset(ctx);
 }

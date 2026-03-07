@@ -32,7 +32,7 @@
 // Velocità di retromarcia durante il recovery della linea persa.
 // Più negativo = retromarcia più veloce. Riduci (meno negativo) se il robot
 // arretra troppo e perde la linea anche dietro.
-#define REVERSE_VEL             ((short)-350)
+#define REVERSE_VEL             ((short)-450)
 
 // Velocità di avanzamento lento nella fase finale del recovery.
 // Aumenta se il robot impiega troppo a ritrovare la linea dopo la sterzata.
@@ -58,7 +58,7 @@
 
 // Distanza minima (mm) dal TOF frontale per rilevare un ostacolo.
 // Aumenta se il robot reagisce troppo tardi, riduci se frena per oggetti lontani.
-#define OBSTACLE_DETECT_MM      ((uint16_t)120)
+#define OBSTACLE_DETECT_MM      ((uint16_t)25)
 
 // Numero di letture consecutive valide sotto OBSTACLE_DETECT_MM
 // prima di dichiarare "ostacolo". Evita falsi positivi da spike del TOF.
@@ -89,7 +89,7 @@
 
 // Retromarcia iniziale (ms) per verificare se era una svolta non completata.
 // Se trova la linea in questo tempo → torna a FOLLOWING, altrimenti avanza nel gap.
-#define GAP_CHECK_BACK_MS       ((uint16_t)300)
+#define GAP_CHECK_BACK_MS       ((uint16_t)1000)
 
 // Timeout totale (ms) per l'intera sequenza di recovery (REVERSE+CENTER+FORWARD).
 // Se scade il robot si ferma. Aumenta su piste con gap molto lunghi.
@@ -97,7 +97,7 @@
 
 // Timeout (ms) per una svolta a 90° (verde singolo).
 // Aumenta se il robot non completa la svolta in tempo.
-#define TURN_TIMEOUT_MS         ((uint16_t)2000)
+#define TURN_TIMEOUT_MS         ((uint16_t)1000)
 
 // Timeout (ms) per l'inversione a U (doppio verde).
 // Aumenta se il robot non riesce a completare la rotazione a 180°.
@@ -140,10 +140,10 @@
 
 // ── Debounce verde ───────────────────────────────────────────────
 
-// Numero di cicli consecutivi con verde=true per confermare il rilevamento.
+// Numero di cicli consecutivi (o quasi) con verde=true per confermare il rilevamento.
 // Aumenta se ci sono troppi falsi positivi, riduci se il robot non rileva
 // i bollini verdi abbastanza rapidamente.
-#define GREEN_CONFIRM_READS     ((uint8_t)3)
+#define GREEN_CONFIRM_READS     ((uint8_t)2)
 
 // Cicli per confermare il secondo lato verde (nella finestra doppio-verde).
 // Può essere minore di GREEN_CONFIRM_READS perché il secondo lato
